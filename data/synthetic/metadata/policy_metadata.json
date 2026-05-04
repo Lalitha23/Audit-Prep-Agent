@@ -1,0 +1,41 @@
+{
+  "access_control_policy.pdf": {
+    "title": "Access Control Policy",
+    "version": "2.1",
+    "effective_date": "2024-01-15",
+    "owner": "Information Security Team",
+    "coverage_map": {
+      "CC6.1": "full",
+      "CC6.6": "full",
+      "CC6.2": "partial",
+      "CC8.1": "partial"
+    }
+  },
+  "information_security_policy.pdf": {
+    "title": "Information Security Policy",
+    "version": "3.0",
+    "effective_date": "2024-02-01",
+    "owner": "Chief Information Security Officer",
+    "coverage_map": {
+      "CC7.2": "full",
+      "CC7.3": "full",
+      "CC6.1": "partial",
+      "CC6.2": "partial"
+    }
+  },
+  "vendor_management_policy.pdf": {
+    "title": "Vendor Management Policy",
+    "version": "1.5",
+    "effective_date": "2023-11-10",
+    "owner": "Procurement & Risk Management",
+    "coverage_map": {
+      "CC9.2": "full",
+      "A1.2": "at_risk",
+      "CC1.2": "at_risk",
+      "CC2.2": "at_risk",
+      "CC5.3": "at_risk",
+      "CC8.1": "at_risk",
+      "A1.1": "at_risk"
+    }
+  }
+}
