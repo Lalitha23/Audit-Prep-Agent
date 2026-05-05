@@ -2,9 +2,8 @@ import csv
 import json
 import os
 import sys
-import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 # ── env bootstrap (must run before any src/ import) ──────────────────────────
 from dotenv import load_dotenv
@@ -44,14 +43,22 @@ from src.agents.orchestrator import OrchestratorAgent
 CHECKLIST_CSV   = _BASE / "data" / "synthetic" / "checklists" / "soc2_sample.csv"
 EMBEDDINGS_JSON = _BASE / "data" / "embeddings" / "policy_embeddings.json"
 
+POLICY_NAMES = {
+    "access_control_policy.pdf":        "Access Control Policy",
+    "information_security_policy.pdf":  "Information Security Policy",
+    "vendor_management_policy.pdf":     "Vendor Management Policy",
+}
+
 ACCEPTANCE_CRITERIA = [
-    ("PDF ingestion pipeline",              True),
-    ("Text chunking with overlap",          True),
-    ("Embedding generation (OpenAI)",       True),
-    ("Cosine similarity retrieval",         True),
-    ("Multi-agent coverage assessment",     True),
-    ("Gap report with confidence levels",   True),
+    ("PDF ingestion pipeline",            True),
+    ("Text chunking with overlap",        True),
+    ("Embedding generation (OpenAI)",     True),
+    ("Cosine similarity retrieval",       True),
+    ("Multi-agent coverage assessment",   True),
+    ("Gap report with confidence levels", True),
 ]
+
+CONFIDENCE_SCORES = {"high": 1.0, "medium": 0.5, "low": 0.0}
 
 # ── page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -77,6 +84,38 @@ with st.sidebar:
     )
     st.divider()
 
+    with st.expander("⚙️ How It Works"):
+        st.markdown(
+            """
+**Multi-Agent Architecture**
+
+1. **Orchestrator Agent**
+   Receives the full SOC 2 checklist and coordinates the analysis loop.
+   For each requirement, it delegates to the Coverage Agent and handles
+   low-confidence re-queries automatically.
+
+2. **Coverage Agent**
+   For each requirement it:
+   - Queries the retrieval engine with the requirement text
+   - Receives the top-5 most semantically similar policy chunks
+   - Sends requirement + evidence to Claude Sonnet for assessment
+   - Returns a structured verdict: Covered / Partial / At Risk
+
+3. **Semantic Search (Retrieval)**
+   Policy documents are pre-chunked (~375 words), embedded with
+   `text-embedding-3-small`, and stored in memory. At query time,
+   the requirement text is embedded and ranked by cosine similarity
+   against all policy chunks — no keyword matching required.
+
+4. **Re-query Logic**
+   If Claude returns low confidence, the Orchestrator triggers one
+   additional retrieval pass using Claude's own suggested recheck terms,
+   then keeps whichever result scores higher.
+            """
+        )
+
+    st.divider()
+
     st.subheader("Acceptance Criteria")
     for label, done in ACCEPTANCE_CRITERIA:
         icon = "✅" if done else "⬜"
@@ -88,6 +127,8 @@ with st.sidebar:
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 def load_requirements() -> List[Dict]:
+    if not CHECKLIST_CSV.exists():
+        raise FileNotFoundError(f"Checklist not found: {CHECKLIST_CSV}")
     rows = []
     with open(CHECKLIST_CSV, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
@@ -102,24 +143,97 @@ def load_requirements() -> List[Dict]:
 
 @st.cache_resource(show_spinner="Loading retrieval engine...")
 def get_retrieval_engine() -> InMemoryRetrieval:
-    return InMemoryRetrieval(embeddings_path=EMBEDDINGS_JSON)
+    if not EMBEDDINGS_JSON.exists():
+        raise FileNotFoundError(
+            f"Embeddings file not found at {EMBEDDINGS_JSON}. "
+            "Run `python3 scripts/generate_embeddings.py` first."
+        )
+    try:
+        return InMemoryRetrieval(embeddings_path=EMBEDDINGS_JSON)
+    except (json.JSONDecodeError, KeyError) as e:
+        raise ValueError(f"Embeddings file is corrupted or has unexpected format: {e}")
 
 
 def confidence_badge(level: str) -> str:
-    return {"high": "🟢 High", "medium": "🟡 Medium", "low": "🔴 Low"}.get(level, level)
+    return {"high": "🟢 High", "medium": "🟡 Medium", "low": "🔴 Low"}.get(level, f"❓ {level}")
+
+
+def policy_display_name(filename: str) -> str:
+    return POLICY_NAMES.get(filename, filename)
 
 
 def render_citation(c: Dict, idx: int) -> None:
     source  = c.get("source", "unknown")
-    excerpt = c.get("excerpt", "")[:200]
+    excerpt = c.get("excerpt", "").strip()[:300]
     score   = c.get("score", 0.0)
-    with st.expander(f"Citation {idx}: {source}  (score: {score:.3f})"):
-        st.markdown(f"> {excerpt}")
+    label   = policy_display_name(source)
+    score_pct = int(score * 100)
+    score_bar = "█" * (score_pct // 10) + "░" * (10 - score_pct // 10)
+
+    with st.expander(f"📄 Citation {idx} — {label}  |  relevance: {score:.3f}"):
+        col_score, col_src = st.columns([1, 3])
+        col_score.metric("Relevance", f"{score:.3f}")
+        col_src.markdown(f"**Source:** `{source}`")
+        if excerpt:
+            st.markdown("**Relevant excerpt:**")
+            st.info(f'"{excerpt}"')
+        else:
+            st.caption("No excerpt available.")
+
+
+def avg_confidence(details: Dict) -> float:
+    scores = [CONFIDENCE_SCORES.get(d.get("confidence", "low"), 0.0)
+              for d in details.values()]
+    return sum(scores) / len(scores) if scores else 0.0
+
+
+def render_summary_stats(report: Dict) -> None:
+    details = report.get("details", {})
+    total   = len(details)
+    n_cov   = len(report["covered"])
+    n_par   = len(report["partial"])
+    n_risk  = len(report["at_risk"])
+    avg_conf = avg_confidence(details)
+    conf_label = (
+        "🟢 High" if avg_conf >= 0.75 else
+        "🟡 Medium" if avg_conf >= 0.35 else
+        "🔴 Low"
+    )
+
+    st.markdown("### Summary")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Total Analyzed", total)
+    c2.metric("✅ Covered",  n_cov,  delta=None)
+    c3.metric("⚠️ Partial",  n_par,  delta=None)
+    c4.metric("🚨 At Risk",  n_risk, delta=None)
+    c5.metric("Avg Confidence", conf_label)
+
+    # coverage bar
+    if total:
+        cov_pct  = n_cov  / total
+        par_pct  = n_par  / total
+        risk_pct = n_risk / total
+        st.markdown(
+            f"**Coverage breakdown:** "
+            f"{'█' * round(cov_pct  * 20)}{'░' * round(par_pct  * 20)}"
+            f"{'·' * round(risk_pct * 20)}  "
+            f"({n_cov} covered / {n_par} partial / {n_risk} at risk out of {total})"
+        )
 
 
 # ── main page ─────────────────────────────────────────────────────────────────
 st.title("🔍 AuditPrep Agent")
 st.subheader("Multi-Agent SOC 2 Audit Gap Analysis")
+
+# ── pre-flight key check (non-blocking warning) ───────────────────────────────
+_missing_keys = [k for k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY") if not os.getenv(k)]
+if _missing_keys:
+    st.warning(
+        f"**Missing API key(s):** {', '.join(_missing_keys)}  \n"
+        "Add them to your `.env` file before running analysis. "
+        "See `.env.example` for the required format.",
+        icon="⚠️",
+    )
 
 st.info(
     "**Demo Mode:** Using synthetic SOC 2 checklist (12 requirements) "
@@ -134,67 +248,88 @@ col3.metric("Embedding Model", "text-embedding-3-small")
 
 st.divider()
 
-run_btn = st.button("▶ Run Analysis", type="primary", use_container_width=True)
+run_btn = st.button(
+    "▶ Run Analysis",
+    type="primary",
+    use_container_width=True,
+    disabled=bool(_missing_keys),
+)
 
 if run_btn:
-    # ── validate environment ──────────────────────────────────────────────────
+    # ── hard stop if keys still missing ──────────────────────────────────────
     missing = [k for k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY") if not os.getenv(k)]
     if missing:
-        st.error(f"Missing environment variable(s): {', '.join(missing)}. Check your .env file.")
+        st.error(
+            f"Cannot run analysis — missing: {', '.join(missing)}.  \n"
+            "Add the key(s) to your `.env` file and reload the page."
+        )
         st.stop()
 
-    if not EMBEDDINGS_JSON.exists():
-        st.error("Embeddings file not found. Run `python3 scripts/generate_embeddings.py` first.")
-        st.stop()
-
+    # ── load checklist ────────────────────────────────────────────────────────
     try:
         requirements = load_requirements()
+    except FileNotFoundError as e:
+        st.error(f"**Checklist not found:** {e}")
+        st.stop()
     except Exception as e:
-        st.error(f"Could not load checklist: {e}")
+        st.error(f"**Could not load checklist:** {e}")
         st.stop()
 
     total = len(requirements)
 
     # ── initialise agents ─────────────────────────────────────────────────────
-    with st.spinner("Initialising agents..."):
-        try:
-            retrieval       = get_retrieval_engine()
-            coverage_agent  = CoverageAgent(retrieval_engine=retrieval)
-            orchestrator    = OrchestratorAgent(coverage_agent=coverage_agent)
-        except Exception as e:
-            st.error(f"Failed to initialise agents: {e}")
-            st.stop()
+    try:
+        retrieval      = get_retrieval_engine()
+        coverage_agent = CoverageAgent(retrieval_engine=retrieval)
+        orchestrator   = OrchestratorAgent(coverage_agent=coverage_agent)
+    except FileNotFoundError as e:
+        st.error(f"**Embeddings file missing:** {e}")
+        st.stop()
+    except ValueError as e:
+        st.error(f"**Corrupted embeddings file:** {e}  \nDelete and re-run `generate_embeddings.py`.")
+        st.stop()
+    except EnvironmentError as e:
+        st.error(f"**API key error:** {e}")
+        st.stop()
+    except Exception as e:
+        st.error(f"**Initialisation error:** {e}")
+        st.stop()
 
     # ── run analysis with live progress ───────────────────────────────────────
     st.markdown("### Processing Requirements")
-    progress_bar  = st.progress(0)
-    status_text   = st.empty()
-    results_area  = st.container()
+    progress_bar = st.progress(0)
+    status_text  = st.empty()
+    results_area = st.container()
 
     gap_report: Dict = {"covered": [], "partial": [], "at_risk": [], "details": {}}
-    live_results: List[Dict] = []
 
     for idx, req in enumerate(requirements):
         req_id = req["requirement_id"]
         status_text.markdown(
-            f"**Processing requirement {idx + 1}/{total}: `{req_id}`** — "
-            f"{req['category']}"
+            f"**Processing requirement {idx + 1}/{total}: `{req_id}`** — {req['category']}"
         )
-        progress_bar.progress((idx) / total)
+        progress_bar.progress(idx / total)
 
         try:
             result = coverage_agent.process_message(req)
 
-            # re-query on low confidence (mirrors orchestrator logic)
+            # one re-query on low confidence
             if result.get("confidence") == "low" and result.get("suggested_recheck_terms"):
                 recheck_msg = dict(req)
                 recheck_msg["recheck_terms"] = result["suggested_recheck_terms"]
-                recheck = coverage_agent.process_message(recheck_msg)
-                _rank = {"Covered": 2, "Partial": 1, "At Risk": 0}
-                _conf = {"high": 2, "medium": 1, "low": 0}
-                if (_rank.get(recheck.get("assessment",""),0) + _conf.get(recheck.get("confidence",""),0) >=
-                    _rank.get(result.get("assessment",""),0)  + _conf.get(result.get("confidence",""),0)):
-                    result = recheck
+                try:
+                    recheck = coverage_agent.process_message(recheck_msg)
+                    _rank = {"Covered": 2, "Partial": 1, "At Risk": 0}
+                    _conf = {"high": 2, "medium": 1, "low": 0}
+                    if (
+                        _rank.get(recheck.get("assessment", ""), 0)
+                        + _conf.get(recheck.get("confidence", ""), 0)
+                        >= _rank.get(result.get("assessment", ""), 0)
+                        + _conf.get(result.get("confidence", ""), 0)
+                    ):
+                        result = recheck
+                except Exception:
+                    pass  # keep original result if recheck fails
 
         except Exception as e:
             result = {
@@ -202,7 +337,7 @@ if run_btn:
                 "assessment":     "At Risk",
                 "confidence":     "low",
                 "citations":      [],
-                "reasoning":      f"Analysis error: {e}",
+                "reasoning":      f"Analysis failed — {type(e).__name__}: {e}. Manual review required.",
             }
 
         assessment = result.get("assessment", "At Risk")
@@ -211,14 +346,12 @@ if run_btn:
         )
         gap_report[bucket].append(req_id)
         gap_report["details"][req_id] = result
-        live_results.append(result)
 
-        # inline status pill
         icon = {"Covered": "✅", "Partial": "⚠️", "At Risk": "🚨"}.get(assessment, "❓")
         with results_area:
             st.markdown(
                 f"{icon} **{req_id}** — {assessment} "
-                f"({confidence_badge(result.get('confidence','?'))})"
+                f"({confidence_badge(result.get('confidence', '?'))})"
             )
 
     progress_bar.progress(1.0)
@@ -230,18 +363,21 @@ if run_btn:
         f"🚨 {len(gap_report['at_risk'])} at risk"
     )
 
-    # ── store in session state ────────────────────────────────────────────────
-    st.session_state["gap_report"]  = gap_report
+    st.session_state["gap_report"]   = gap_report
     st.session_state["orchestrator"] = orchestrator
     st.session_state["log"]          = orchestrator.get_message_log()
 
 
-# ── gap report tabs ───────────────────────────────────────────────────────────
+# ── gap report ────────────────────────────────────────────────────────────────
 if "gap_report" in st.session_state:
     report = st.session_state["gap_report"]
 
     st.divider()
     st.markdown("## Gap Report")
+
+    # ── summary stats ─────────────────────────────────────────────────────────
+    render_summary_stats(report)
+    st.divider()
 
     tab_covered, tab_partial, tab_risk = st.tabs([
         f"✅ Covered ({len(report['covered'])})",
@@ -249,59 +385,77 @@ if "gap_report" in st.session_state:
         f"🚨 At Risk ({len(report['at_risk'])})",
     ])
 
-    # ── Covered ───────────────────────────────────────────────────────────────
     with tab_covered:
         if not report["covered"]:
-            st.info("No requirements fully covered.")
+            st.info("No requirements are fully covered by the current policy set.")
         for req_id in report["covered"]:
             d = report["details"][req_id]
-            with st.expander(f"✅ {req_id} — {d.get('assessment')} ({confidence_badge(d.get('confidence','?'))})"):
-                st.markdown(f"**Reasoning:** {d.get('reasoning','')}")
-                for i, c in enumerate(d.get("citations", [])[:2], 1):
-                    render_citation(c, i)
+            with st.expander(
+                f"✅ {req_id} — {d.get('assessment')} ({confidence_badge(d.get('confidence','?'))})"
+            ):
+                st.markdown(f"**Reasoning:** {d.get('reasoning', '')}")
+                citations = d.get("citations", [])
+                if citations:
+                    st.markdown("**Supporting citations:**")
+                    for i, c in enumerate(citations[:2], 1):
+                        render_citation(c, i)
 
-    # ── Partial ───────────────────────────────────────────────────────────────
     with tab_partial:
         if not report["partial"]:
             st.info("No partially-covered requirements.")
         for req_id in report["partial"]:
             d = report["details"][req_id]
-            with st.expander(f"⚠️ {req_id} — {d.get('assessment')} ({confidence_badge(d.get('confidence','?'))})"):
-                st.markdown(f"**Reasoning:** {d.get('reasoning','')}")
-                for i, c in enumerate(d.get("citations", [])[:3], 1):
-                    render_citation(c, i)
+            with st.expander(
+                f"⚠️ {req_id} — {d.get('assessment')} ({confidence_badge(d.get('confidence','?'))})"
+            ):
+                st.markdown(f"**Reasoning:** {d.get('reasoning', '')}")
+                citations = d.get("citations", [])
+                if citations:
+                    st.markdown("**Supporting citations:**")
+                    for i, c in enumerate(citations[:3], 1):
+                        render_citation(c, i)
                 recheck = d.get("suggested_recheck_terms")
                 if recheck:
-                    st.markdown(f"**Suggested recheck terms:** `{'`, `'.join(recheck)}`")
+                    st.markdown(
+                        f"**Suggested recheck terms:** "
+                        + "  ".join(f"`{t}`" for t in recheck)
+                    )
 
-    # ── At Risk ───────────────────────────────────────────────────────────────
     with tab_risk:
         if not report["at_risk"]:
             st.success("No at-risk requirements — great coverage!")
         for req_id in report["at_risk"]:
             d = report["details"][req_id]
-            with st.expander(f"🚨 {req_id} — {d.get('assessment')} ({confidence_badge(d.get('confidence','?'))})"):
-                st.markdown(f"**Reasoning:** {d.get('reasoning','')}")
+            with st.expander(
+                f"🚨 {req_id} — {d.get('assessment')} ({confidence_badge(d.get('confidence','?'))})"
+            ):
+                st.markdown(f"**Reasoning:** {d.get('reasoning', '')}")
                 st.markdown("**Suggested next steps:**")
                 st.markdown(
                     "- Draft or locate an existing policy that addresses this requirement\n"
-                    "- Engage the control owner to document evidence\n"
-                    "- Add to remediation backlog with target date"
+                    "- Engage the relevant control owner to document evidence\n"
+                    "- Add to remediation backlog with a target completion date\n"
+                    "- Consider a gap assessment workshop with the policy owner"
                 )
-                for i, c in enumerate(d.get("citations", [])[:2], 1):
-                    render_citation(c, i)
+                citations = d.get("citations", [])
+                if citations:
+                    st.markdown("**Partial evidence found:**")
+                    for i, c in enumerate(citations[:2], 1):
+                        render_citation(c, i)
                 recheck = d.get("suggested_recheck_terms")
                 if recheck:
-                    st.markdown(f"**Suggested recheck terms:** `{'`, `'.join(recheck)}`")
+                    st.markdown(
+                        f"**Suggested recheck terms:** "
+                        + "  ".join(f"`{t}`" for t in recheck)
+                    )
 
     # ── export ────────────────────────────────────────────────────────────────
     st.divider()
     st.markdown("### Export")
 
-    log_data = st.session_state.get("log", [])
     export_payload = {
-        "gap_report":    report,
-        "decision_log":  log_data,
+        "gap_report":   report,
+        "decision_log": st.session_state.get("log", []),
     }
 
     st.download_button(
@@ -311,3 +465,14 @@ if "gap_report" in st.session_state:
         mime="application/json",
         use_container_width=True,
     )
+
+# ── footer ────────────────────────────────────────────────────────────────────
+st.divider()
+st.markdown(
+    "<div style='text-align:center; color:#888; font-size:0.85em;'>"
+    "Built with <strong>Claude Sonnet 4</strong> &nbsp;|&nbsp; "
+    "Powered by <strong>OpenAI Embeddings</strong> &nbsp;|&nbsp; "
+    "<a href='https://github.com/lalithapammi/audit-prep-agent' style='color:#888;'>GitHub</a>"
+    "</div>",
+    unsafe_allow_html=True,
+)
