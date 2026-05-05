@@ -170,7 +170,8 @@ class CoverageAgent(Agent):
                 "suggested_recheck_terms": [req_text[:50]],
             }
 
-        result["requirement_id"] = req_id
+        result["requirement_id"]    = req_id
+        result["retrieved_chunks"] = chunks   # expose to UI / callers
         self.log_message(
             "assessed",
             {"requirement_id": req_id, "assessment": result.get("assessment"),
