@@ -28,7 +28,8 @@ def _find_and_load_env() -> None:
         git_dir = repo_root / ".git"
         # worktree .git is a file pointing at the real repo
         if git_dir.is_file():
-            real_root = Path(git_dir.read_text().split("gitdir:")[1].strip()).parent.parent
+            gitdir = Path(git_dir.read_text().split("gitdir:")[1].strip())
+            real_root = gitdir.parent.parent.parent
             candidate = real_root / ".env"
             if candidate.exists():
                 load_dotenv(candidate, override=False)
