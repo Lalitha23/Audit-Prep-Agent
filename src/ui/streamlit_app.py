@@ -473,7 +473,7 @@ with st.sidebar:
     for label, done in ACCEPTANCE_CRITERIA:
         st.markdown(f"{'✅' if done else '⬜'} {label}")
     st.divider()
-    st.markdown("[GitHub](https://github.com/lalithapammi/audit-prep-agent)")
+    st.markdown("[GitHub](https://github.com/Lalitha23/Audit-Prep-Agent)")
 
 
 # ── page header ───────────────────────────────────────────────────────────────
@@ -722,7 +722,7 @@ elif "gap_report" in st.session_state:
 st.markdown(
     "<div class='footer'>Built with <strong>Claude Sonnet 4</strong> &nbsp;|&nbsp; "
     "Powered by <strong>OpenAI Embeddings</strong> &nbsp;|&nbsp; "
-    "<a href='https://github.com/lalithapammi/audit-prep-agent' style='color:#aaa;'>GitHub</a>"
+    "<a href='https://github.com/Lalitha23/Audit-Prep-Agent' style='color:#aaa;'>GitHub</a>"
     "</div>",
     unsafe_allow_html=True,
 )
