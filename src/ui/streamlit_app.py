@@ -261,6 +261,13 @@ def _write_req_expander(ph, req_id: str, category: str, lines: List[str],
                 citations = (result or {}).get("citations", [])
                 reasoning = (result or {}).get("reasoning", "")
 
+                # Explicit assessment + confidence summary
+                a_icon = {"Covered": "✅", "Partial": "⚠️", "At Risk": "🚨"}.get(assessment, "❓")
+                st.markdown(
+                    f"**Assessment:** {a_icon} {assessment} &nbsp;|&nbsp; "
+                    f"**Confidence:** {confidence_badge(confidence)}"
+                )
+
                 if chunks:
                     st.markdown("---")
                     st.markdown("**🔎 Retrieved evidence chunks:**")
