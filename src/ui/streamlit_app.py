@@ -67,24 +67,58 @@ st.set_page_config(
 # ── custom CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* Chat bubble */
-.chat-bubble {
-    background: #f5f5f5;
-    border-radius: 16px;
-    border: 1px solid #e0e0e0;
-    padding: 20px 24px;
-    margin: 12px 0 8px 0;
-    font-size: 0.95rem;
-    line-height: 1.6;
+/* User chat message — right-aligned bubble */
+.chat-row {
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-end;
+    gap: 10px;
+    margin: 16px 0 8px 0;
 }
-.chat-bubble .doc-list { margin: 8px 0 12px 0; }
-.chat-bubble .doc-list p { margin: 2px 0; }
+.chat-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: #6c757d;
+    color: white;
+    font-size: 0.85rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.chat-bubble {
+    background: #1a56db;
+    color: white;
+    border-radius: 18px 18px 4px 18px;
+    padding: 14px 18px;
+    max-width: 72%;
+    font-size: 0.93rem;
+    line-height: 1.55;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+.chat-bubble .file-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+.chat-bubble .chip {
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.30);
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 0.78rem;
+    white-space: nowrap;
+    color: white;
+}
 .chat-bubble .user-msg {
-    margin-top: 14px;
-    padding-top: 12px;
-    border-top: 1px solid #ddd;
     font-style: italic;
-    color: #333;
+    font-size: 0.95rem;
+    opacity: 0.95;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.25);
 }
 /* Red primary button override */
 div[data-testid="stButton"] button[kind="primary"] {
@@ -471,19 +505,20 @@ input_ph = st.empty()
 
 if "gap_report" not in st.session_state:
     with input_ph.container():
-        st.markdown("#### Your request")
         st.markdown("""
-<div class="chat-bubble">
-  <div class="doc-list">
-    <strong>📎 Uploaded Documents</strong><br>
-    <p>✅ &nbsp;<code>soc2_sample.csv</code> &nbsp;—&nbsp; 12 requirements</p>
-    <p>✅ &nbsp;<code>access_control_policy.pdf</code></p>
-    <p>✅ &nbsp;<code>information_security_policy.pdf</code></p>
-    <p>✅ &nbsp;<code>vendor_management_policy.pdf</code></p>
+<div class="chat-row">
+  <div class="chat-bubble">
+    <div class="file-chips">
+      <span class="chip">📎 soc2_sample.csv &nbsp;·&nbsp; 12 requirements</span>
+      <span class="chip">📄 access_control_policy.pdf</span>
+      <span class="chip">📄 information_security_policy.pdf</span>
+      <span class="chip">📄 vendor_management_policy.pdf</span>
+    </div>
+    <div class="user-msg">
+      Analyze these documents against SOC 2 and show coverage.
+    </div>
   </div>
-  <div class="user-msg">
-    "Analyze these documents against SOC 2 and show coverage."
-  </div>
+  <div class="chat-avatar">You</div>
 </div>
 """, unsafe_allow_html=True)
 
