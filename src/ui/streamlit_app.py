@@ -573,14 +573,19 @@ if run_btn:
                 ], done=False)
 
                 # ── Phase 2: decide whether to re-query ───────────────────────
+                # Trigger on low confidence (any assessment) OR partial + medium
+                # (ambiguous partial result is worth a second retrieval pass).
                 terms          = first_result.get("suggested_recheck_terms", [])
-                should_requery = bool(terms) and fa_conf == "low"
+                should_requery = bool(terms) and (
+                    fa_conf == "low" or
+                    (fa_assess == "Partial" and fa_conf == "medium")
+                )
 
                 if should_requery:
                     trigger_reason = (
                         "Low confidence detected"
                         if fa_conf == "low"
-                        else "Partial coverage — re-querying for stronger evidence"
+                        else "Partial coverage with medium confidence — re-querying for stronger evidence"
                     )
                     _write_req_expander(ph, req_id, category, [
                         "🔍 **First attempt:** querying retrieval system… ✓",
