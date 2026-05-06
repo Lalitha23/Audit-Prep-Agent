@@ -387,11 +387,16 @@ st.info(
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 2. USER MESSAGE + BUTTON — hidden once analysis has run
+# 2. USER MESSAGE + BUTTON — cleared immediately when analysis starts
 # ═══════════════════════════════════════════════════════════════════════════════
+# Wrap in st.empty() so we can call input_ph.empty() to wipe it the instant
+# the button is clicked, before any analysis output appears.
+input_ph = st.empty()
+
 if "gap_report" not in st.session_state:
-    st.markdown("#### Your request")
-    st.markdown("""
+    with input_ph.container():
+        st.markdown("#### Your request")
+        st.markdown("""
 <div class="chat-bubble">
   <div class="doc-list">
     <strong>📎 Uploaded Documents</strong><br>
@@ -406,15 +411,15 @@ if "gap_report" not in st.session_state:
 </div>
 """, unsafe_allow_html=True)
 
-    _bcol1, _bcol2, _bcol3 = st.columns([1, 2, 1])
-    with _bcol2:
-        run_btn = st.button(
-            "▶ Start Analysis",
-            type="primary",
-            use_container_width=True,
-            disabled=bool(_missing),
-            key="run_btn",
-        )
+        _bcol1, _bcol2, _bcol3 = st.columns([1, 2, 1])
+        with _bcol2:
+            run_btn = st.button(
+                "▶ Start Analysis",
+                type="primary",
+                use_container_width=True,
+                disabled=bool(_missing),
+                key="run_btn",
+            )
 else:
     run_btn = False
 
@@ -425,6 +430,8 @@ progress_area = st.container()
 
 # ── LIVE ANALYSIS RUN ────────────────────────────────────────────────────────
 if run_btn:
+    input_ph.empty()   # wipe user message + button immediately
+
     for key in ("gap_report", "steps", "decision_log"):
         st.session_state.pop(key, None)
 
