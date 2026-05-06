@@ -155,15 +155,27 @@ def render_citation(c: Dict, idx: int) -> None:
         if excerpt:
             st.info(f'"{excerpt}"')
 
+def _src_summary(chunks: List[Dict]) -> str:
+    sc: Dict[str, int] = {}
+    for c in chunks:
+        s = policy_name(c.get("source", "unknown"))
+        sc[s] = sc.get(s, 0) + 1
+    return ", ".join(f"{s} ({n})" for s, n in sc.items()) or "none"
+
+
 def _write_req_expander(ph, req_id: str, category: str, lines: List[str],
                         done: bool = False, result: Optional[Dict] = None) -> None:
-    """Write/update a single requirement's detail expander into placeholder *ph*."""
+    """Write/update a single requirement's detail expander into placeholder *ph*.
+
+    During processing (done=False): expander is expanded with live step lines.
+    After completion (done=True):   collapses and shows full detail.
+      - If result contains '_first_attempt', renders the three-phase
+        self-correction view (first attempt → orchestrator trigger → second attempt).
+      - Otherwise renders a plain single-pass view.
+    """
     assessment = (result or {}).get("assessment", "")
     confidence = (result or {}).get("confidence", "")
     requeried  = (result or {}).get("_requeried", False)
-    chunks     = (result or {}).get("retrieved_chunks", [])
-    citations  = (result or {}).get("citations", [])
-    reasoning  = (result or {}).get("reasoning", "")
 
     if done and assessment:
         icon  = {"Covered": "✅", "Partial": "⚠️", "At Risk": "🚨"}.get(assessment, "❓")
@@ -179,35 +191,92 @@ def _write_req_expander(ph, req_id: str, category: str, lines: List[str],
             for line in lines:
                 st.markdown(line)
 
-            if done and chunks:
+            if not done:
+                return
+
+            first_att = (result or {}).get("_first_attempt")
+
+            if first_att:
+                # ── THREE-PHASE SELF-CORRECTION VIEW ─────────────────────────
+                _conf_rank = {"high": 2, "medium": 1, "low": 0}
+
+                # — First attempt ——————————————————————————————————————————————
+                fa_assess = first_att.get("assessment", "")
+                fa_conf   = first_att.get("confidence", "")
+                fa_reason = first_att.get("reasoning", "")
+                fa_icon   = {"Covered": "✅", "Partial": "⚠️", "At Risk": "🚨"}.get(fa_assess, "❓")
+                fa_chunks = first_att.get("retrieved_chunks", [])
+
+                st.markdown("##### 🔍 First Attempt")
+                st.caption(f"📄 {len(fa_chunks)} chunks retrieved — {_src_summary(fa_chunks)}")
+                st.markdown(
+                    f"**Assessment:** {fa_icon} {fa_assess} &nbsp;|&nbsp; "
+                    f"**Confidence:** {confidence_badge(fa_conf)}"
+                )
+                if fa_reason:
+                    st.info(f"💬 {fa_reason}")
+
+                # — Orchestrator self-correction trigger ————————————————————————
+                recheck_terms = (result or {}).get("_recheck_terms", [])
+                trigger_reason = (
+                    "Low confidence detected"
+                    if fa_conf == "low"
+                    else "Partial coverage — re-querying for stronger evidence"
+                )
                 st.markdown("---")
-                st.markdown("**🔎 Retrieved evidence chunks:**")
-                source_counts: Dict[str, int] = {}
-                for c in chunks:
-                    src = policy_name(c.get("source", "unknown"))
-                    source_counts[src] = source_counts.get(src, 0) + 1
-                src_summary = ", ".join(f"{s} ({n})" for s, n in source_counts.items())
-                st.caption(f"Sources: {src_summary}")
-
-                top = chunks[0]
-                top_text  = top.get("text", "")[:200].replace("\n", " ")
-                top_score = top.get("score", 0.0)
-                st.info(f'**Top chunk** (relevance {top_score:.3f}):\n\n"{top_text}…"')
-
-            if done and citations:
-                st.markdown("**📄 Citations from Claude:**")
-                for i, c in enumerate(citations[:3], 1):
-                    render_citation(c, i)
-
-            if done and requeried:
                 st.warning(
-                    "↩️ **Re-queried** with: "
-                    + ", ".join(f"`{t}`" for t in
-                                (result or {}).get("suggested_recheck_terms", []))
+                    f"⚠️ **Orchestrator:** {trigger_reason} — triggering re-query\n\n"
+                    + "🔑 **Refined search terms:** "
+                    + " &nbsp;".join(f"`{t}`" for t in recheck_terms)
                 )
 
-            if done and reasoning:
-                st.markdown(f"**🧠 Reasoning:**\n\n{reasoning}")
+                # — Second attempt ——————————————————————————————————————————————
+                sa_assess = (result or {}).get("assessment", "")
+                sa_conf   = (result or {}).get("confidence", "")
+                sa_reason = (result or {}).get("reasoning", "")
+                sa_icon   = {"Covered": "✅", "Partial": "⚠️", "At Risk": "🚨"}.get(sa_assess, "❓")
+                sa_chunks = (result or {}).get("retrieved_chunks", [])
+                accepted  = (result or {}).get("_recheck_accepted", True)
+
+                st.markdown("---")
+                st.markdown("##### 🔄 Second Attempt (refined terms)")
+                st.caption(f"📄 {len(sa_chunks)} chunks retrieved — {_src_summary(sa_chunks)}")
+                st.markdown(
+                    f"**Assessment:** {sa_icon} {sa_assess} &nbsp;|&nbsp; "
+                    f"**Confidence:** {confidence_badge(sa_conf)}"
+                )
+                if sa_reason:
+                    st.info(f"💬 {sa_reason}")
+
+                if accepted and _conf_rank.get(sa_conf, 0) > _conf_rank.get(fa_conf, 0):
+                    st.success("✅ Confidence improved — accepting re-query result")
+                elif accepted:
+                    st.success("✅ Re-query result accepted (equal or better score)")
+                else:
+                    st.warning("↩️ Original result kept — re-query did not improve")
+
+            else:
+                # ── SINGLE-PASS VIEW ──────────────────────────────────────────
+                chunks    = (result or {}).get("retrieved_chunks", [])
+                citations = (result or {}).get("citations", [])
+                reasoning = (result or {}).get("reasoning", "")
+
+                if chunks:
+                    st.markdown("---")
+                    st.markdown("**🔎 Retrieved evidence chunks:**")
+                    st.caption(f"Sources: {_src_summary(chunks)}")
+                    top       = chunks[0]
+                    top_text  = top.get("text", "")[:200].replace("\n", " ")
+                    top_score = top.get("score", 0.0)
+                    st.info(f'**Top chunk** (relevance {top_score:.3f}):\n\n"{top_text}…"')
+
+                if citations:
+                    st.markdown("**📄 Citations from Claude:**")
+                    for i, c in enumerate(citations[:3], 1):
+                        render_citation(c, i)
+
+                if reasoning:
+                    st.markdown(f"**🧠 Reasoning:**\n\n{reasoning}")
 
 
 def _render_gap_report(gap_report: Dict) -> None:
@@ -474,51 +543,72 @@ if run_btn:
             category = req["category"]
             ph       = req_placeholders[req_id]
 
-            # step 1: querying
+            # ── Phase 1: first attempt ─────────────────────────────────────
             _write_req_expander(ph, req_id, category, [
-                "🔎 Querying retrieval system…",
+                "🔍 **First attempt:** querying retrieval system…",
             ], done=False)
 
             try:
-                result    = coverage_agent.process_message(req)
-                requeried = False
-                chunks    = result.get("retrieved_chunks", [])
+                first_result = coverage_agent.process_message(req)
+                requeried    = False
+                fa_chunks    = first_result.get("retrieved_chunks", [])
+                fa_assess    = first_result.get("assessment", "At Risk")
+                fa_conf      = first_result.get("confidence", "low")
+                fa_reason    = first_result.get("reasoning", "")
+                fa_icon      = {"Covered": "✅", "Partial": "⚠️", "At Risk": "🚨"}.get(fa_assess, "❓")
 
-                # step 2: retrieved + assessing
-                source_counts: Dict[str, int] = {}
-                for c in chunks:
-                    src = policy_name(c.get("source", "unknown"))
-                    source_counts[src] = source_counts.get(src, 0) + 1
-                src_line = ", ".join(f"**{s}** ({n})" for s, n in source_counts.items())
+                # Show first-attempt result
                 _write_req_expander(ph, req_id, category, [
-                    "🔎 Querying retrieval system… ✓",
-                    f"📄 Retrieved {len(chunks)} chunks from: {src_line}",
-                    "🧠 Assessing coverage with Claude…",
+                    "🔍 **First attempt:** querying retrieval system… ✓",
+                    f"   📄 Retrieved {len(fa_chunks)} chunks — {_src_summary(fa_chunks)}",
+                    f"   {fa_icon} Assessment: **{fa_assess}** | Confidence: {confidence_badge(fa_conf)}",
+                    f"   💬 _{fa_reason[:130]}…_",
                 ], done=False)
 
-                # re-query on low confidence
-                if result.get("confidence") == "low" and result.get("suggested_recheck_terms"):
-                    terms = result["suggested_recheck_terms"]
+                # ── Phase 2: decide whether to re-query ───────────────────────
+                terms         = first_result.get("suggested_recheck_terms", [])
+                should_requery = bool(terms) and (
+                    fa_assess == "Partial" or
+                    (fa_assess == "At Risk" and fa_conf == "low")
+                )
+
+                if should_requery:
+                    trigger_reason = (
+                        "Low confidence detected"
+                        if fa_conf == "low"
+                        else "Partial coverage — re-querying for stronger evidence"
+                    )
                     _write_req_expander(ph, req_id, category, [
-                        "🔎 Querying retrieval system… ✓",
-                        f"📄 Retrieved {len(chunks)} chunks from: {src_line}",
-                        "🧠 Assessing coverage with Claude… ✓",
-                        f"⚠️ Low confidence — triggering re-query with: "
-                        + ", ".join(f"`{t}`" for t in terms),
-                        "🔄 Re-querying…",
+                        "🔍 **First attempt:** querying retrieval system… ✓",
+                        f"   📄 Retrieved {len(fa_chunks)} chunks — {_src_summary(fa_chunks)}",
+                        f"   {fa_icon} Assessment: **{fa_assess}** | Confidence: {confidence_badge(fa_conf)}",
+                        f"   💬 _{fa_reason[:130]}…_",
+                        "",
+                        f"⚠️ **Orchestrator:** {trigger_reason} — triggering re-query",
+                        "   🔑 Refined terms: " + " ".join(f"`{t}`" for t in terms),
+                        "",
+                        "🔄 **Second attempt:** re-analyzing with refined terms…",
                     ], done=False)
+
                     recheck_msg = dict(req)
                     recheck_msg["recheck_terms"] = terms
-                    try:
-                        recheck = coverage_agent.process_message(recheck_msg)
-                        _rank = {"Covered": 2, "Partial": 1, "At Risk": 0}
-                        _conf = {"high": 2, "medium": 1, "low": 0}
-                        if (_rank.get(recheck.get("assessment", ""), 0) + _conf.get(recheck.get("confidence", ""), 0) >=
-                                _rank.get(result.get("assessment", ""), 0) + _conf.get(result.get("confidence", ""), 0)):
-                            result    = recheck
-                            requeried = True
-                    except Exception:
-                        pass
+                    recheck_result = coverage_agent.process_message(recheck_msg)
+
+                    _rank = {"Covered": 2, "Partial": 1, "At Risk": 0}
+                    _conf = {"high": 2, "medium": 1, "low": 0}
+                    score1 = _rank.get(fa_assess, 0) + _conf.get(fa_conf, 0)
+                    score2 = (_rank.get(recheck_result.get("assessment", ""), 0) +
+                              _conf.get(recheck_result.get("confidence", ""), 0))
+                    accepted_recheck = score2 >= score1
+
+                    result    = recheck_result if accepted_recheck else first_result
+                    requeried = True
+
+                    result["_first_attempt"]    = first_result
+                    result["_recheck_terms"]    = terms
+                    result["_recheck_accepted"] = accepted_recheck
+                else:
+                    result = first_result
 
             except Exception as e:
                 result = {
