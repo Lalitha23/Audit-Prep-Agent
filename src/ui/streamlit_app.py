@@ -566,11 +566,8 @@ if run_btn:
                 ], done=False)
 
                 # ── Phase 2: decide whether to re-query ───────────────────────
-                terms         = first_result.get("suggested_recheck_terms", [])
-                should_requery = bool(terms) and (
-                    fa_assess == "Partial" or
-                    (fa_assess == "At Risk" and fa_conf == "low")
-                )
+                terms          = first_result.get("suggested_recheck_terms", [])
+                should_requery = bool(terms) and fa_conf == "low"
 
                 if should_requery:
                     trigger_reason = (
