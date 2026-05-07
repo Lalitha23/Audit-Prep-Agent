@@ -33,6 +33,7 @@ _BASE = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_BASE))
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from src.retrieval.in_memory_retrieval import InMemoryRetrieval
 from src.agents.coverage_agent import CoverageAgent
@@ -428,6 +429,10 @@ def _build_panel_html(is_open: bool) -> str:
 <div id="docs-slide-panel" style="transform:{transform}">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
     <h3 style="margin:0;font-size:1.05rem;color:#1a1a2e">📂 Input Documents</h3>
+    <span id="panel-close-btn" title="Close"
+          style="cursor:pointer;font-size:1.1rem;color:#888;padding:4px 8px;border-radius:4px;
+                 line-height:1;user-select:none" onmouseenter="this.style.background='#e9ecef'"
+          onmouseleave="this.style.background='transparent'">✕</span>
   </div>
   <p style="color:#888;font-size:0.80rem;margin:0 0 18px 0">Source files used in this analysis</p>
   {csv_section}
@@ -841,10 +846,63 @@ elif "gap_report" in st.session_state:
         )
 
 # ── Fixed slide-in panel (always injected; CSS transform controls visibility) ──
-st.markdown(
-    _build_panel_html(st.session_state.get("docs_panel_open", False)),
-    unsafe_allow_html=True,
-)
+_panel_is_open = st.session_state.get("docs_panel_open", False)
+st.markdown(_build_panel_html(_panel_is_open), unsafe_allow_html=True)
+
+# JS controller — runs in a same-origin iframe so it can reach window.parent.document
+components.html(f"""
+<script>
+(function() {{
+  var IS_OPEN = {'true' if _panel_is_open else 'false'};
+
+  function setup() {{
+    try {{
+      var doc = window.parent.document;
+      var panel = doc.getElementById('docs-slide-panel');
+      if (!panel) {{ setTimeout(setup, 150); return; }}
+
+      var ss = window.parent.sessionStorage;
+
+      // When Streamlit opens the panel, clear any previous manual-close flag
+      if (IS_OPEN) ss.removeItem('docsPanelClosed');
+
+      // If user manually closed it this session, keep it hidden
+      if (ss.getItem('docsPanelClosed') === '1') {{
+        panel.style.transition = 'none';
+        panel.style.transform  = 'translateX(110%)';
+        setTimeout(function() {{ panel.style.transition = ''; }}, 60);
+        return;
+      }}
+
+      function closePanel() {{
+        panel.style.transform = 'translateX(110%)';
+        ss.setItem('docsPanelClosed', '1');
+      }}
+
+      // X button
+      var btn = doc.getElementById('panel-close-btn');
+      if (btn && !btn.__cl) {{
+        btn.__cl = true;
+        btn.addEventListener('click', closePanel);
+      }}
+
+      // Auto-close 4 s after mouse leaves the panel
+      if (!panel.__ll) {{
+        panel.__ll = true;
+        var t;
+        panel.addEventListener('mouseleave', function() {{
+          t = setTimeout(closePanel, 4000);
+        }});
+        panel.addEventListener('mouseenter', function() {{
+          clearTimeout(t);
+        }});
+      }}
+    }} catch(e) {{ console.warn('Panel JS:', e); }}
+  }}
+  setup();
+}})();
+</script>
+""", height=0)
 
 # ── footer ────────────────────────────────────────────────────────────────────
 st.markdown(
