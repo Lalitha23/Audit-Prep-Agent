@@ -55,7 +55,10 @@ Guidelines:
 - "Partial": Requirement is mentioned or partially addressed but key elements are missing
 - "At Risk": No meaningful coverage found in the retrieved evidence
 - citations: include only excerpts that directly support your assessment (max 3)
-- suggested_recheck_terms: provide ONLY when confidence is "low", otherwise omit the field
+- suggested_recheck_terms: 2-4 specific search terms to surface targeted policy evidence
+  - ALWAYS include when confidence is "low"
+  - ALWAYS include when assessment is "Partial" and confidence is "medium" (ambiguous partial coverage warrants a second look)
+  - Omit otherwise
 - Keep reasoning factual and grounded in the evidence provided
 """
 
@@ -170,7 +173,8 @@ class CoverageAgent(Agent):
                 "suggested_recheck_terms": [req_text[:50]],
             }
 
-        result["requirement_id"] = req_id
+        result["requirement_id"]    = req_id
+        result["retrieved_chunks"] = chunks   # expose to UI / callers
         self.log_message(
             "assessed",
             {"requirement_id": req_id, "assessment": result.get("assessment"),

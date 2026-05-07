@@ -15,7 +15,7 @@ build/
 .eggs/
 
 # Data
-data/embeddings/*.json
+# data/embeddings/*.json (commented out for deployment)
 
 # OS
 .DS_Store
