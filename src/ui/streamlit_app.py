@@ -142,15 +142,22 @@ div[data-testid="stButton"] button[kind="primary"]:hover {
 .pill-at-risk  { background:#f8d7da; color:#721c24; border-radius:4px; padding:2px 8px; font-size:0.85rem; }
 /* Footer */
 .footer { text-align:center; color:#aaa; font-size:0.80rem; margin-top:40px; }
-/* Docs panel */
-.docs-panel {
+/* Docs panel — fixed overlay, no layout impact */
+#docs-slide-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 400px;
+    height: 100vh;
     background: #f8f9fa;
-    border-left: 2px solid #e0e0e0;
-    border-radius: 8px;
-    padding: 16px 14px;
-    height: 100%;
+    border-left: 2px solid #dee2e6;
+    box-shadow: -6px 0 28px rgba(0,0,0,0.12);
+    z-index: 9999;
+    overflow-y: auto;
+    padding: 28px 20px 48px 20px;
+    box-sizing: border-box;
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.docs-panel h4 { margin-top: 0; font-size: 1rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -354,51 +361,78 @@ def _load_doc_contents() -> Dict:
     return {"pdfs": pdfs}
 
 
-def _render_docs_panel() -> None:
-    """Render the right-side document viewer panel content."""
-    st.markdown('<div class="docs-panel">', unsafe_allow_html=True)
-    st.markdown("#### 📂 Input Documents")
-    st.caption("Source files used in this analysis")
-    st.divider()
+def _panel_section(icon: str, title: str, body_html: str) -> str:
+    """Return HTML for one collapsible <details> section in the panel."""
+    return f"""
+<details style="margin-bottom:8px;border:1px solid #dee2e6;border-radius:8px;overflow:hidden;background:white">
+  <summary style="padding:11px 14px;cursor:pointer;font-weight:500;font-size:0.88rem;
+                  list-style:none;display:flex;align-items:center;gap:7px;
+                  user-select:none;color:#1a1a2e">
+    {icon} {title}
+  </summary>
+  <div style="padding:14px;border-top:1px solid #eee;font-size:0.82rem;color:#333;line-height:1.55">
+    {body_html}
+  </div>
+</details>"""
 
-    # ── 1. SOC 2 checklist ───────────────────────────────────────────────────
-    with st.expander("📋 soc2_sample.csv — SOC 2 Checklist", expanded=False):
-        try:
-            reqs = load_requirements()
-            for r in reqs[:4]:
-                st.markdown(f"**{r['requirement_id']}** &nbsp;·&nbsp; {r['category']}")
-                st.caption(r["requirement_text"][:180] + "…")
-                st.divider()
-            if len(reqs) > 4:
-                st.caption(f"… and {len(reqs) - 4} more requirements")
-        except Exception as e:
-            st.error(str(e))
 
-    # ── 2-4. Policy PDFs ─────────────────────────────────────────────────────
+def _build_panel_html(is_open: bool) -> str:
+    """Build the fixed slide-in panel HTML. Always injected; CSS transform shows/hides it."""
+    transform = "translateX(0)" if is_open else "translateX(110%)"
+
     docs = _load_doc_contents()
+
+    # ── CSV section ───────────────────────────────────────────────────────────
+    try:
+        reqs = load_requirements()
+        csv_body = ""
+        for r in reqs[:4]:
+            txt = r["requirement_text"][:200]
+            csv_body += f"""
+<div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #f0f0f0">
+  <strong style="color:#1a1a2e">{r['requirement_id']}</strong>
+  <span style="color:#888;font-size:0.80rem"> · {r['category']}</span><br>
+  <span style="color:#444">{txt}…</span>
+</div>"""
+        if len(reqs) > 4:
+            csv_body += f'<p style="color:#999;font-size:0.80rem">… and {len(reqs)-4} more requirements</p>'
+    except Exception as e:
+        csv_body = f"<p style='color:red'>{e}</p>"
+
+    csv_section = _panel_section("📋", "soc2_sample.csv — SOC 2 Checklist", csv_body)
+
+    # ── PDF sections ──────────────────────────────────────────────────────────
+    pdf_sections = ""
     for filename, label in POLICY_NAMES.items():
-        pdf = docs["pdfs"].get(filename, {})
-        with st.expander(f"📄 {filename}", expanded=False):
-            if not pdf:
-                st.warning("File not found.")
-                continue
-
-            m = pdf.get("meta", {})
+        pdf  = docs["pdfs"].get(filename, {})
+        if not pdf:
+            body = "<p style='color:#999'>File not found.</p>"
+        else:
+            m    = pdf.get("meta", {})
+            meta = ""
             if m:
-                st.markdown(f"**{m.get('title', label)}**")
-                cols = st.columns(2)
-                cols[0].caption(f"Version: {m.get('version', '—')}")
-                cols[1].caption(f"Effective: {m.get('effective_date', '—')}")
-                st.caption(f"Owner: {m.get('owner', '—')}")
-                st.divider()
+                meta = f"""
+<div style="background:#eef2ff;border-radius:6px;padding:9px 12px;margin-bottom:10px">
+  <strong>{m.get('title', label)}</strong><br>
+  <span style="color:#555">Version {m.get('version','—')} &nbsp;·&nbsp; Effective {m.get('effective_date','—')}</span><br>
+  <span style="color:#555">Owner: {m.get('owner','—')}</span>
+</div>"""
+            raw   = pdf.get("text", "")
+            snip  = raw[:500].replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+            dots  = "…" if len(raw) > 500 else ""
+            body  = meta + f'<pre style="font-size:0.77rem;white-space:pre-wrap;color:#333;margin:0;background:#fafafa;padding:8px;border-radius:4px">{snip}{dots}</pre>'
 
-            preview = pdf.get("text", "")[:500]
-            if preview:
-                st.text(preview + ("…" if len(pdf.get("text", "")) > 500 else ""))
-            else:
-                st.info("No text extracted.")
+        pdf_sections += _panel_section("📄", filename, body)
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    return f"""
+<div id="docs-slide-panel" style="transform:{transform}">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+    <h3 style="margin:0;font-size:1.05rem;color:#1a1a2e">📂 Input Documents</h3>
+  </div>
+  <p style="color:#888;font-size:0.80rem;margin:0 0 18px 0">Source files used in this analysis</p>
+  {csv_section}
+  {pdf_sections}
+</div>"""
 
 
 def _render_gap_report(gap_report: Dict) -> None:
@@ -583,31 +617,21 @@ if _missing:
     )
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# LAYOUT: split (main 70% + panel 30%) or full-width
+# LAYOUT: full-width main content (panel is a fixed CSS overlay, not a column)
 # ═══════════════════════════════════════════════════════════════════════════════
-if st.session_state["docs_panel_open"]:
-    main_col, panel_col = st.columns([7, 3], gap="medium")
-else:
-    main_col  = st.container()
-    panel_col = None
 
-# ── All page content lives inside main_col ────────────────────────────────────
-run_btn       = False   # default; overwritten below if button is clicked
-input_ph      = None
-progress_area = None
+# 1. Always-visible info box
+st.info(
+    "💡 This multi-agent system analyzes your policy documents against SOC 2 requirements "
+    "using semantic search and AI reasoning to identify coverage gaps."
+)
 
-with main_col:
-    # 1. Always-visible info box
-    st.info(
-        "💡 This multi-agent system analyzes your policy documents against SOC 2 requirements "
-        "using semantic search and AI reasoning to identify coverage gaps."
-    )
-
-    # 2. User message + button (cleared instantly on click)
-    input_ph = st.empty()
-    if "gap_report" not in st.session_state:
-        with input_ph.container():
-            st.markdown("""
+# 2. User message + button (cleared instantly on click)
+run_btn  = False
+input_ph = st.empty()
+if "gap_report" not in st.session_state:
+    with input_ph.container():
+        st.markdown("""
 <div class="chat-row">
   <div class="chat-bubble">
     <div class="file-chips">
@@ -624,23 +648,18 @@ with main_col:
 </div>
 """, unsafe_allow_html=True)
 
-            _bcol1, _bcol2, _bcol3 = st.columns([1, 2, 1])
-            with _bcol2:
-                run_btn = st.button(
-                    "▶ Start Analysis",
-                    type="primary",
-                    use_container_width=True,
-                    disabled=bool(_missing),
-                    key="run_btn",
-                )
+        _bcol1, _bcol2, _bcol3 = st.columns([1, 2, 1])
+        with _bcol2:
+            run_btn = st.button(
+                "▶ Start Analysis",
+                type="primary",
+                use_container_width=True,
+                disabled=bool(_missing),
+                key="run_btn",
+            )
 
-    # 3. Progress + report area (populated below or from session state)
-    progress_area = st.container()
-
-# ── Right panel (when open) ───────────────────────────────────────────────────
-if panel_col is not None:
-    with panel_col:
-        _render_docs_panel()
+# 3. Progress + report area
+progress_area = st.container()
 
 # ── LIVE ANALYSIS RUN ────────────────────────────────────────────────────────
 if run_btn:
@@ -820,6 +839,12 @@ elif "gap_report" in st.session_state:
             gap_report = st.session_state["gap_report"],
             retrieval  = get_retrieval_engine(),
         )
+
+# ── Fixed slide-in panel (always injected; CSS transform controls visibility) ──
+st.markdown(
+    _build_panel_html(st.session_state.get("docs_panel_open", False)),
+    unsafe_allow_html=True,
+)
 
 # ── footer ────────────────────────────────────────────────────────────────────
 st.markdown(
