@@ -1,11 +1,22 @@
 # AuditPrep Agent
 Multi-agent audit gap analysis system
 
-## Setup
+## Local Development
+
 1. Clone repository
 2. Install dependencies: `pip install -r requirements.txt`
-3. Copy `.env.example` to `.env` and add API keys
+3. Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and add your API keys
 4. Run: `streamlit run src/ui/streamlit_app.py`
+
+## Streamlit Cloud Deployment
+
+1. Push this repository to GitHub
+2. Go to [share.streamlit.io](https://share.streamlit.io) and connect your repo
+3. Set the main file path to `src/ui/streamlit_app.py`
+4. Open **Settings → Secrets** in the app dashboard and paste the contents of `.streamlit/secrets.toml.example` with your real keys filled in — do **not** upload `secrets.toml` directly
+5. Click **Deploy**
+
+Live app: _URL will be added after first deployment_
 
 ## Project Structure
 
