@@ -47,6 +47,10 @@ auditprep-agent/
     └── validate_retrieval.py   # Smoke-test retrieval quality
 ```
 
+## Notes
+
+> **Embeddings file**: `data/embeddings/policy_embeddings.json` (496 KB) is committed to the repo to enable Streamlit Cloud deployment without requiring an OpenAI API key at build time. If you add new policy documents locally, regenerate it with `python scripts/generate_embeddings.py` and commit the updated file.
+
 ## v1 Scope
 - SOC 2 Type II audit gap analysis
 - Synthetic dataset demonstration
