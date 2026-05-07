@@ -41,6 +41,8 @@ from src.agents.orchestrator import OrchestratorAgent
 # ── constants ─────────────────────────────────────────────────────────────────
 CHECKLIST_CSV   = _BASE / "data" / "synthetic" / "checklists" / "soc2_sample.csv"
 EMBEDDINGS_JSON = _BASE / "data" / "embeddings" / "policy_embeddings.json"
+POLICIES_DIR    = _BASE / "data" / "synthetic" / "policies"
+METADATA_JSON   = _BASE / "data" / "synthetic" / "metadata" / "policy_metadata.json"
 
 POLICY_NAMES = {
     "access_control_policy.pdf":       "Access Control Policy",
@@ -140,6 +142,15 @@ div[data-testid="stButton"] button[kind="primary"]:hover {
 .pill-at-risk  { background:#f8d7da; color:#721c24; border-radius:4px; padding:2px 8px; font-size:0.85rem; }
 /* Footer */
 .footer { text-align:center; color:#aaa; font-size:0.80rem; margin-top:40px; }
+/* Docs panel */
+.docs-panel {
+    background: #f8f9fa;
+    border-left: 2px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 16px 14px;
+    height: 100%;
+}
+.docs-panel h4 { margin-top: 0; font-size: 1rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -320,6 +331,76 @@ def _write_req_expander(ph, req_id: str, category: str, lines: List[str],
                     st.markdown(f"**🧠 Reasoning:**\n\n{reasoning}")
 
 
+@st.cache_data(show_spinner=False)
+def _load_doc_contents() -> Dict:
+    """Read CSV requirements + PDF texts once; cache for panel viewer."""
+    from src.utils.pdf_parser import extract_text_from_pdf
+
+    meta: Dict = {}
+    if METADATA_JSON.exists():
+        with open(METADATA_JSON, encoding="utf-8") as f:
+            meta = json.load(f)
+
+    pdfs: Dict = {}
+    for filename in POLICY_NAMES:
+        path = POLICIES_DIR / filename
+        if path.exists():
+            parsed = extract_text_from_pdf(path)
+            pdfs[filename] = {
+                "text": parsed.get("full_text", ""),
+                "meta": meta.get(filename, {}),
+            }
+
+    return {"pdfs": pdfs}
+
+
+def _render_docs_panel() -> None:
+    """Render the right-side document viewer panel content."""
+    st.markdown('<div class="docs-panel">', unsafe_allow_html=True)
+    st.markdown("#### 📂 Input Documents")
+    st.caption("Source files used in this analysis")
+    st.divider()
+
+    # ── 1. SOC 2 checklist ───────────────────────────────────────────────────
+    with st.expander("📋 soc2_sample.csv — SOC 2 Checklist", expanded=False):
+        try:
+            reqs = load_requirements()
+            for r in reqs[:4]:
+                st.markdown(f"**{r['requirement_id']}** &nbsp;·&nbsp; {r['category']}")
+                st.caption(r["requirement_text"][:180] + "…")
+                st.divider()
+            if len(reqs) > 4:
+                st.caption(f"… and {len(reqs) - 4} more requirements")
+        except Exception as e:
+            st.error(str(e))
+
+    # ── 2-4. Policy PDFs ─────────────────────────────────────────────────────
+    docs = _load_doc_contents()
+    for filename, label in POLICY_NAMES.items():
+        pdf = docs["pdfs"].get(filename, {})
+        with st.expander(f"📄 {filename}", expanded=False):
+            if not pdf:
+                st.warning("File not found.")
+                continue
+
+            m = pdf.get("meta", {})
+            if m:
+                st.markdown(f"**{m.get('title', label)}**")
+                cols = st.columns(2)
+                cols[0].caption(f"Version: {m.get('version', '—')}")
+                cols[1].caption(f"Effective: {m.get('effective_date', '—')}")
+                st.caption(f"Owner: {m.get('owner', '—')}")
+                st.divider()
+
+            preview = pdf.get("text", "")[:500]
+            if preview:
+                st.text(preview + ("…" if len(pdf.get("text", "")) > 500 else ""))
+            else:
+                st.info("No text extracted.")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
 def _render_gap_report(gap_report: Dict) -> None:
     """Render the gap report section (metrics + tabs for each bucket)."""
     details = gap_report.get("details", {})
@@ -476,12 +557,25 @@ with st.sidebar:
     st.markdown("[GitHub](https://github.com/Lalitha23/Audit-Prep-Agent)")
 
 
-# ── page header ───────────────────────────────────────────────────────────────
-st.title("🔍 AuditPrep Agent")
-st.caption("Multi-Agent SOC 2 Type II Audit Gap Analysis")
-
-# ── PRE-FLIGHT warning ────────────────────────────────────────────────────────
+# ── PRE-FLIGHT ────────────────────────────────────────────────────────────────
 _missing = [k for k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY") if not os.getenv(k)]
+
+# ── Panel toggle state ────────────────────────────────────────────────────────
+if "docs_panel_open" not in st.session_state:
+    st.session_state["docs_panel_open"] = False
+
+# ── Page header row: title left, docs-panel button right ─────────────────────
+hdr_col, btn_col = st.columns([5, 1])
+with hdr_col:
+    st.title("🔍 AuditPrep Agent")
+    st.caption("Multi-Agent SOC 2 Type II Audit Gap Analysis")
+with btn_col:
+    st.write("")   # push button down to align with title baseline
+    _panel_open = st.session_state["docs_panel_open"]
+    _btn_label  = "✕ Documents" if _panel_open else "📂 Input Documents"
+    if st.button(_btn_label, key="docs_toggle", use_container_width=True):
+        st.session_state["docs_panel_open"] = not _panel_open
+
 if _missing:
     st.warning(
         f"Missing API key(s): {', '.join(_missing)}. Add to `.env` before running.",
@@ -489,23 +583,31 @@ if _missing:
     )
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 1. ALWAYS-VISIBLE INFO BOX
+# LAYOUT: split (main 70% + panel 30%) or full-width
 # ═══════════════════════════════════════════════════════════════════════════════
-st.info(
-    "💡 This multi-agent system analyzes your policy documents against SOC 2 requirements "
-    "using semantic search and AI reasoning to identify coverage gaps."
-)
+if st.session_state["docs_panel_open"]:
+    main_col, panel_col = st.columns([7, 3], gap="medium")
+else:
+    main_col  = st.container()
+    panel_col = None
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# 2. USER MESSAGE + BUTTON — cleared immediately when analysis starts
-# ═══════════════════════════════════════════════════════════════════════════════
-# Wrap in st.empty() so we can call input_ph.empty() to wipe it the instant
-# the button is clicked, before any analysis output appears.
-input_ph = st.empty()
+# ── All page content lives inside main_col ────────────────────────────────────
+run_btn       = False   # default; overwritten below if button is clicked
+input_ph      = None
+progress_area = None
 
-if "gap_report" not in st.session_state:
-    with input_ph.container():
-        st.markdown("""
+with main_col:
+    # 1. Always-visible info box
+    st.info(
+        "💡 This multi-agent system analyzes your policy documents against SOC 2 requirements "
+        "using semantic search and AI reasoning to identify coverage gaps."
+    )
+
+    # 2. User message + button (cleared instantly on click)
+    input_ph = st.empty()
+    if "gap_report" not in st.session_state:
+        with input_ph.container():
+            st.markdown("""
 <div class="chat-row">
   <div class="chat-bubble">
     <div class="file-chips">
@@ -522,22 +624,23 @@ if "gap_report" not in st.session_state:
 </div>
 """, unsafe_allow_html=True)
 
-        _bcol1, _bcol2, _bcol3 = st.columns([1, 2, 1])
-        with _bcol2:
-            run_btn = st.button(
-                "▶ Start Analysis",
-                type="primary",
-                use_container_width=True,
-                disabled=bool(_missing),
-                key="run_btn",
-            )
-else:
-    run_btn = False
+            _bcol1, _bcol2, _bcol3 = st.columns([1, 2, 1])
+            with _bcol2:
+                run_btn = st.button(
+                    "▶ Start Analysis",
+                    type="primary",
+                    use_container_width=True,
+                    disabled=bool(_missing),
+                    key="run_btn",
+                )
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# 3. PROGRESS + REPORT AREA
-# ═══════════════════════════════════════════════════════════════════════════════
-progress_area = st.container()
+    # 3. Progress + report area (populated below or from session state)
+    progress_area = st.container()
+
+# ── Right panel (when open) ───────────────────────────────────────────────────
+if panel_col is not None:
+    with panel_col:
+        _render_docs_panel()
 
 # ── LIVE ANALYSIS RUN ────────────────────────────────────────────────────────
 if run_btn:
