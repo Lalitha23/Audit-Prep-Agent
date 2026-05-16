@@ -91,7 +91,7 @@ Prove that **multi-agent coordination + retrieval-based reasoning** can automate
 ### What's Explicitly Out of Scope
 
 **Not Included in v1:**
-- ❌ SharePoint integration → Deferred to v2 (requires OAuth, adds deployment complexity)
+- ❌ SharePoint integration → Deferred to v1.5 (MCP-based; synthetic data sufficient to prove v1 hypothesis)
 - ❌ Real customer data → Privacy/legal risk; synthetic data proves concept
 - ❌ Custom file upload → Increases scope; demo dataset sufficient for validation
 - ❌ Cloud vector database (Pinecone) → In-memory retrieval adequate for v1 scale
@@ -352,6 +352,12 @@ Prove that **multi-agent coordination + retrieval-based reasoning** can automate
 - Risk: Rate limiting during embedding generation
 - Mitigation: Batch processing, embeddings committed to repository
 
+**SharePoint MCP Server** *(v1.5)*
+- Purpose: Live evidence retrieval from SharePoint document repositories via MCP protocol
+- Criticality: Required for v1.5 SharePoint integration; not needed for v1
+- Risk: Third-party MCP server availability and search quality outside system control; SharePoint content quality varies
+- Mitigation: Graceful fallback to local policy store if MCP unavailable; manual spot-check of retrieval quality on representative SharePoint content before integration
+
 **Streamlit Cloud**
 - Purpose: Hosting platform for demo
 - Criticality: Required for public accessibility
@@ -444,21 +450,24 @@ Prove that **multi-agent coordination + retrieval-based reasoning** can automate
 
 ## 🚀 Roadmap Beyond v1
 
-### v1.1 Enhancements
-**Focus:** Validate abstraction layer, improve user experience
-- Upgrade retrieval to FAISS (demonstrates swappable implementations)
-- Add PDF export for gap report
-- Performance optimization (caching, parallel processing)
+### v1.5 — Connect to Real Evidence
+**Focus:** Replace synthetic data with live SharePoint evidence via MCP
+- SharePoint MCP server integration — Coverage Agent gains SharePoint as a retrieval source alongside local policy store
+- Result merging: evidence ranked and deduplicated across local PDFs and SharePoint results
+- FAISS retrieval upgrade (validates swappable abstraction layer under real-world load)
+- PDF export for gap report
+- Performance optimization (caching, parallel processing) to accommodate live retrieval latency
 
-### v2.0 Strategic Features
-**Focus:** Institutional memory, organizational knowledge
+**Key Architectural Change:** The Coverage Agent's tool surface expands to include a SharePoint MCP tool. The Retrieval Abstraction Layer merges results from both sources. Orchestrator and decision log are unchanged. MCP eliminates the OAuth complexity that previously deferred this to v2.
+
+### v2.0 — Institutional Memory
+**Focus:** Organizational knowledge that persists across audit cycles
 - Knowledge graph layer modeling relationships between controls, policies, findings
 - Graph-hybrid retrieval for relationship-aware evidence matching
-- Multi-cycle memory across audit cycles
-- SharePoint connector (evidence search in document repository)
+- Multi-cycle memory: system retains what was flagged last year, who owned remediation, what evidence satisfied the auditor
 - Outreach Agent for cross-functional coordination
 
-### v3.0 Production Scale
+### v3.0 — Production Scale
 **Focus:** Enterprise readiness, multi-tenant deployment
 - Production knowledge graph (Neo4j)
 - Cloud vector database (Pinecone)
@@ -466,7 +475,20 @@ Prove that **multi-agent coordination + retrieval-based reasoning** can automate
 - Framework expansion (SOC 1, HIPAA, ISO 27001, FedRAMP)
 - Persistent audit workspaces
 
-**Key Insight:** The knowledge graph enables true institutional memory—the system remembers what was flagged last year, which controls are interdependent, and which policies map to which frameworks. Combined with SharePoint integration, this transforms the system from "audit analysis tool" to "organizational compliance memory."
+**Key Insight:** The knowledge graph enables true institutional memory—the system remembers what was flagged last year, which controls are interdependent, and which policies map to which frameworks. Combined with the SharePoint integration established in v1.5, this transforms the system from "audit analysis tool" to "organizational compliance memory."
+
+---
+
+### Risk 6: SharePoint MCP Server Quality *(v1.5)*
+
+**Symptom:** MCP server returns low-relevance results or is unavailable, degrading coverage assessment accuracy on live evidence
+
+**Mitigation:**
+- Graceful fallback to local policy store if MCP server is unavailable
+- Manual spot-check of retrieval quality on representative SharePoint content before v1.5 integration
+- Result confidence scoring flags low-quality MCP retrievals for human review
+
+**Severity:** Medium (degrades accuracy but doesn't break system; fallback maintains v1 functionality)
 
 ---
 
@@ -488,14 +510,17 @@ Prove that **multi-agent coordination + retrieval-based reasoning** can automate
 - **Current Approach:** Display error message, maintain partial results if possible
 - **Next Step:** Define graceful degradation scenarios
 
----
+**Q5:** Which SharePoint MCP server should v1.5 use, and how is it hosted?
+- **Status:** TBD — options include Microsoft's first-party MCP server, third-party implementations, or a self-managed server
+- **Next Step:** Evaluate available SharePoint MCP servers against retrieval quality, auth model, and hosting requirements before v1.5 planning
 
-## 🧱 Technology Stack
+---
 
 | Component | Technology | Justification |
 |-----------|-----------|---------------|
 | **Agent Orchestration** | Python 3.10+ | Standard for AI projects, extensive library ecosystem |
 | **LLM** | Claude Sonnet 4 | Provides structured output for agent communication protocol, balances reasoning quality with cost |
+| **SharePoint Integration** *(v1.5)* | SharePoint MCP Server | Eliminates OAuth complexity; Coverage Agent gains SharePoint as a native tool without agent code changes |
 | **Semantic Search** | Vector embeddings | Captures semantic meaning beyond keyword matching |
 | **Document Processing** | pdfplumber | Reliable PDF text extraction |
 | **UI** | Streamlit | Rapid prototyping, built-in deployment to cloud |
@@ -504,7 +529,7 @@ Prove that **multi-agent coordination + retrieval-based reasoning** can automate
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** [Date]  
-**Owner:** [Your Name]  
+**Document Version:** 1.1  
+**Last Updated:** May 15, 2026  
+**Owner:** Lalitha  
 **Stakeholders:** [If applicable]
