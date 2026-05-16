@@ -635,6 +635,11 @@ st.info(
     "💡 This multi-agent system analyzes your policy documents against SOC 2 requirements "
     "using semantic search and AI reasoning to identify coverage gaps."
 )
+st.caption(
+    "Click **▶ Start Analysis** to watch each SOC 2 requirement analyzed in real time — "
+    "with live agent steps, per-requirement confidence scores, and a final gap report "
+    "showing what's Covered, Partial, or At Risk."
+)
 
 # 2. User message + button (cleared instantly on click)
 run_btn  = False
