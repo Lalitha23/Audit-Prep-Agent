@@ -9,9 +9,9 @@ Multi-agent audit gap analysis system
 
 The Audit Prep RAG Agent follows a five-stage retrieval-augmented generation pipeline. During ingestion, CMS policy documents are split into overlapping chunks, converted to 1536-dim vectors via OpenAI `text-embedding-ada-002`, and stored in a Pinecone vector index. At query time, the auditor's natural-language question is embedded with the same model and used to retrieve the top-K most semantically similar chunks via cosine similarity. Those chunks are assembled into an augmented prompt — together with a system message that constrains Claude to the provided context — passed through a guardrails check, and sent to `claude-3-5-sonnet`. The model returns a grounded answer with full source citations traceable to specific documents and chunk IDs.
 
-<iframe src="diagrams/rag-agent-architecture.html" width="100%" height="600px" frameborder="0"></iframe>
+![Architecture Diagram](docs/architecture_diagram.png)
 
-> **Tip:** Click any node to explore components. Use step buttons to walk through the pipeline.
+**[▶ Open interactive diagram](diagrams/rag-agent-architecture.html)** — click any node to explore components, use step buttons to walk through the pipeline.
 
 ## Project Structure
 
