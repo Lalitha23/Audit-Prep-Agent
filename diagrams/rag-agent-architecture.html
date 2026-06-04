@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audit Prep RAG Agent — Architecture</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #111827;
+      padding: 24px;
+      min-height: 100vh;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+
+    .header { margin-bottom: 18px; }
+    .header h1 { font-size: 19px; font-weight: 600; color: #111827; margin-bottom: 3px; }
+    .header p  { font-size: 12px; color: #6b7280; }
+
+    .controls { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+    .btn {
+      font-size: 12px; padding: 5px 13px; border-radius: 6px;
+      border: 1px solid #d1d5db; background: #fff; color: #374151;
+      cursor: pointer; font-family: inherit; transition: background .12s, border-color .12s;
+    }
+    .btn:hover { background: #f3f4f6; border-color: #9ca3af; }
+    .btn.active { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; font-weight: 500; }
+
+    .diagram-wrap {
+      position: relative; border-radius: 12px;
+      border: 1px solid #e5e7eb; background: #fff;
+      overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    }
+    svg { width: 100%; display: block; }
+    #dots-layer {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none;
+    }
+
+    .info-panel {
+      margin-top: 12px; background: #fff;
+      border: 1px solid #e5e7eb; border-radius: 10px;
+      padding: 13px 16px; font-size: 13px; color: #6b7280;
+      min-height: 54px; line-height: 1.65;
+      box-shadow: 0 1px 2px rgba(0,0,0,.04);
+    }
+    .info-panel strong { color: #111827; font-weight: 600; }
+
+    .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; }
+    .legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #6b7280; }
+    .legend-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    g.node { cursor: pointer; }
+    g.node rect, g.node ellipse { transition: filter .12s; }
+    g.node:hover rect, g.node:hover ellipse { filter: brightness(.92); }
+
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(3px); }
+      to   { opacity: 1; transform: none; }
+    }
+    .anim { animation: fade-up .22s ease; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>Audit Prep RAG Agent — Architecture</h1>
+    <p>OpenAI Embeddings &nbsp;·&nbsp; Pinecone Vector Store &nbsp;·&nbsp; Claude API &nbsp;·&nbsp; CMS Documents</p>
+  </div>
+
+  <div class="controls">
+    <button class="btn active" id="btn-play"   onclick="togglePlay()">&#9654; Animate flow</button>
+    <button class="btn" id="btn-ingest"  onclick="stepInfo('ingest')">&#9312; Ingestion</button>
+    <button class="btn" id="btn-query"   onclick="stepInfo('query')">&#9313; Query</button>
+    <button class="btn" id="btn-ret"     onclick="stepInfo('retrieval')">&#9314; Retrieval</button>
+    <button class="btn" id="btn-gen"     onclick="stepInfo('generation')">&#9315; Generation</button>
+    <button class="btn" id="btn-out"     onclick="stepInfo('output')">&#9316; Output</button>
+  </div>
+
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 760 430" role="img" aria-label="Audit Prep RAG Agent architecture diagram">
+      <defs>
+        <marker id="a-gr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#4a7c0e" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+        <marker id="a-bl" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#185FA5" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+        <marker id="a-in" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#534AB7" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+        <marker id="a-am" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#BA7517" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+        <marker id="a-pu" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#4527A0" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+        <marker id="a-cr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#880E4F" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+        <marker id="a-te" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#0F6E56" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+
+      <!-- ═══ ZONE BACKGROUNDS ═══ -->
+
+      <!-- Zone 1: Document Ingestion (green) -->
+      <rect x="8" y="8" width="192" height="248" rx="11"
+            fill="#EAF3DE" stroke="#639922" stroke-width="0.75" opacity="0.7"/>
+      <text x="20" y="26" font-size="9.5" font-weight="600" fill="#3B6D11"
+            letter-spacing=".06em" font-family="-apple-system,sans-serif">&#9312; DOCUMENT INGESTION</text>
+
+      <!-- Zone 2: User Query (amber) -->
+      <rect x="8" y="265" width="192" height="144" rx="11"
+            fill="#FFF3E0" stroke="#BA7517" stroke-width="0.75" opacity="0.7"/>
+      <text x="20" y="283" font-size="9.5" font-weight="600" fill="#854F0B"
+            letter-spacing=".06em" font-family="-apple-system,sans-serif">&#9313; USER QUERY</text>
+
+      <!-- Zone 3: Retrieval Engine (indigo) -->
+      <rect x="213" y="118" width="220" height="300" rx="11"
+            fill="#E8EAF6" stroke="#534AB7" stroke-width="0.75" opacity="0.7"/>
+      <text x="225" y="136" font-size="9.5" font-weight="600" fill="#3C3489"
+            letter-spacing=".06em" font-family="-apple-system,sans-serif">&#9314; RETRIEVAL ENGINE</text>
+
+      <!-- Zone 4: Claude API (crimson) -->
+      <rect x="447" y="8" width="305" height="175" rx="11"
+            fill="#FCE4EC" stroke="#880E4F" stroke-width="0.75" opacity="0.7"/>
+      <text x="459" y="26" font-size="9.5" font-weight="600" fill="#72243E"
+            letter-spacing=".06em" font-family="-apple-system,sans-serif">&#9315; CLAUDE API</text>
+
+      <!-- Zone 5: Response Output (teal) -->
+      <rect x="447" y="195" width="305" height="227" rx="11"
+            fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.75" opacity="0.7"/>
+      <text x="459" y="213" font-size="9.5" font-weight="600" fill="#085041"
+            letter-spacing=".06em" font-family="-apple-system,sans-serif">&#9316; RESPONSE OUTPUT</text>
+
+      <!-- ═══ NODES — Zone 1 ═══ -->
+
+      <g class="node" id="n-docs" onclick="nodeInfo('docs')">
+        <rect x="18" y="34" width="172" height="44" rx="7"
+              fill="#C0DD97" stroke="#639922" stroke-width="0.75"/>
+        <text x="104" y="51" text-anchor="middle" font-size="12" font-weight="600"
+              fill="#173404" font-family="-apple-system,sans-serif">CMS Docs</text>
+        <text x="104" y="67" text-anchor="middle" font-size="10" fill="#3B6D11"
+              font-family="-apple-system,sans-serif">1 checklist &#183; 4 policies</text>
+      </g>
+
+      <g class="node" id="n-chunk" onclick="nodeInfo('chunk')">
+        <rect x="18" y="90" width="172" height="36" rx="7"
+              fill="#D4EDAC" stroke="#639922" stroke-width="0.75"/>
+        <text x="104" y="109" text-anchor="middle" font-size="12" font-weight="600"
+              fill="#173404" font-family="-apple-system,sans-serif">Text Chunker</text>
+      </g>
+
+      <g class="node" id="n-embed" onclick="nodeInfo('embed')">
+        <rect x="18" y="139" width="172" height="36" rx="7"
+              fill="#B5D4F4" stroke="#185FA5" stroke-width="0.75"/>
+        <text x="104" y="158" text-anchor="middle" font-size="12" font-weight="600"
+              fill="#042C53" font-family="-apple-system,sans-serif">OpenAI Embeddings</text>
+      </g>
+
+      <g class="node" id="n-pine" onclick="nodeInfo('pine')">
+        <rect x="18" y="188" width="172" height="36" rx="7"
+              fill="#CECBF6" stroke="#534AB7" stroke-width="0.75"/>
+        <text x="104" y="207" text-anchor="middle" font-size="12" font-weight="600"
+              fill="#26215C" font-family="-apple-system,sans-serif">Pinecone Store</text>
+      </g>
+
+      <!-- ═══ NODES — Zone 2 ═══ -->
+
+      <g class="node" id="n-user" onclick="nodeInfo('user')">
+        <rect x="18" y="291" width="172" height="36" rx="7"
+              fill="#FFE082" stroke="#BA7517" stroke-width="0.75"/>
+        <text x="104" y="310" text-anchor="middle" font-size="12" font-weight="600"
+              fill="#412402" font-family="-apple-system,sans-serif">Auditor Query</text>
+      </g>
+
+      <g class="node" id="n-qembed" onclick="nodeInfo('qembed')">
+        <rect x="18" y="345" width="172" height="36" rx="7"
+              fill="#B5D4F4" stroke="#185FA5" stroke-width="0.75"/>
+        <text x="104" y="364" text-anchor="middle" font-size="12" font-weight="600"
+              fill="#042C53" font-family="-apple-system,sans-serif">Query Embedding</text>
+      </g>
+
+      <!-- ═══ NODES — Zone 3 ═══ -->
+
+      <g class="node" id="n-sim" onclick="nodeInfo('sim')">
+        <rect x="221" y="145" width="204" height="36" rx="7"
+              fill="#C5CAE9" stroke="#534AB7" stroke-width="0.75"/>
+        <text x="323" y="164" text-anchor="middle" font-size="11.5" font-weight="600"
+              fill="#1A237E" font-family="-apple-system,sans-serif">Similarity Search (Top-K)</text>
+      </g>
+
+      <g class="node" id="n-ctx" onclick="nodeInfo('ctx')">
+        <rect x="221" y="198" width="204" height="36" rx="7"
+              fill="#E8EAF6" stroke="#534AB7" stroke-width="0.75"/>
+        <text x="323" y="217" text-anchor="middle" font-size="12" font-weight="600"
+              fill="#26215C" font-family="-apple-system,sans-serif">Retrieved Chunks</text>
+      </g>
+
+      <g class="node" id="n-prompt" onclick="nodeInfo('prompt')">
+        <rect x="221" y="251" width="204" height="36" rx="7"
+              fill="#D1C4E9" stroke="#4527A0" stroke-width="0.75"/>
+        <text x="323" y="270" text-anchor="middle" font-size="12" font-weight="600"
+              fill="#26215C" font-family="-apple-system,sans-serif">Prompt Builder</text>
+      </g>
+
+      <g class="node" id="n-guard" onclick="nodeInfo('guard')">
+        <rect x="221" y="304" width="204" height="36" rx="7"
+              fill="#FFFDE7" stroke="#BA7517" stroke-width="0.75"/>
+        <text x="323" y="323" text-anchor="middle" font-size="12" font-weight="600"
+              fill="#412402" font-family="-apple-system,sans-serif">Guardrails Check</text>
+      </g>
+
+      <!-- ═══ NODE — Zone 4 ═══ -->
+
+      <g class="node" id="n-claude" onclick="nodeInfo('claude')">
+        <ellipse cx="600" cy="90" rx="116" ry="52"
+                 fill="#F8BBD9" stroke="#880E4F" stroke-width="1.25"/>
+        <text x="600" y="84" text-anchor="middle" font-size="14" font-weight="700"
+              fill="#4A148C" font-family="-apple-system,sans-serif">Claude API</text>
+        <text x="600" y="101" text-anchor="middle" font-size="11" fill="#880E4F"
+              font-family="-apple-system,sans-serif">claude-3-5-sonnet</text>
+      </g>
+
+      <!-- ═══ NODES — Zone 5 ═══ -->
+
+      <g class="node" id="n-ans" onclick="nodeInfo('ans')">
+        <rect x="457" y="221" width="286" height="36" rx="7"
+              fill="#9FE1CB" stroke="#0F6E56" stroke-width="0.75"/>
+        <text x="600" y="240" text-anchor="middle" font-size="12" font-weight="600"
+              fill="#04342C" font-family="-apple-system,sans-serif">Grounded Answer</text>
+      </g>
+
+      <g class="node" id="n-cite" onclick="nodeInfo('cite')">
+        <rect x="457" y="275" width="286" height="36" rx="7"
+              fill="#C8F0E0" stroke="#1D9E75" stroke-width="0.75"/>
+        <text x="600" y="294" text-anchor="middle" font-size="12" font-weight="600"
+              fill="#04342C" font-family="-apple-system,sans-serif">Source Attribution</text>
+      </g>
+
+      <g class="node" id="n-deliver" onclick="nodeInfo('deliver')">
+        <rect x="477" y="329" width="246" height="36" rx="7"
+              fill="#5DCAA5" stroke="#0F6E56" stroke-width="0.75"/>
+        <text x="600" y="348" text-anchor="middle" font-size="12" font-weight="600"
+              fill="#04342C" font-family="-apple-system,sans-serif">Delivered to Auditor</text>
+      </g>
+
+      <!-- ═══ EDGES ═══ -->
+
+      <!-- Zone 1 vertical chain -->
+      <line x1="104" y1="78"  x2="104" y2="89"  stroke="#4a7c0e" stroke-width="1.2" marker-end="url(#a-gr)"/>
+      <line x1="104" y1="126" x2="104" y2="138" stroke="#185FA5" stroke-width="1.2" marker-end="url(#a-bl)"/>
+      <line x1="104" y1="175" x2="104" y2="187" stroke="#534AB7" stroke-width="1.2" marker-end="url(#a-in)"/>
+
+      <!-- Pinecone → Similarity Search -->
+      <polyline points="190,206 208,206 208,163 221,163"
+                stroke="#534AB7" stroke-width="1.2" fill="none" marker-end="url(#a-in)"/>
+
+      <!-- Zone 2 vertical -->
+      <line x1="104" y1="327" x2="104" y2="344" stroke="#BA7517" stroke-width="1.2" marker-end="url(#a-am)"/>
+
+      <!-- Query Embedding → Similarity Search -->
+      <polyline points="190,363 208,363 208,163 221,163"
+                stroke="#185FA5" stroke-width="1.2" fill="none" marker-end="url(#a-bl)"/>
+
+      <!-- Zone 3 vertical chain -->
+      <line x1="323" y1="181" x2="323" y2="197" stroke="#534AB7" stroke-width="1.2" marker-end="url(#a-in)"/>
+      <line x1="323" y1="234" x2="323" y2="250" stroke="#4527A0" stroke-width="1.2" marker-end="url(#a-pu)"/>
+      <line x1="323" y1="287" x2="323" y2="303" stroke="#BA7517" stroke-width="1.2" marker-end="url(#a-am)"/>
+
+      <!-- Prompt Builder → Claude API -->
+      <polyline points="425,269 441,269 441,90 484,90"
+                stroke="#880E4F" stroke-width="1.4" fill="none" marker-end="url(#a-cr)"/>
+
+      <!-- Claude API → Grounded Answer -->
+      <line x1="600" y1="142" x2="600" y2="220" stroke="#0F6E56" stroke-width="1.4" marker-end="url(#a-te)"/>
+
+      <!-- Zone 5 vertical chain -->
+      <line x1="600" y1="257" x2="600" y2="274" stroke="#1D9E75" stroke-width="1.2" marker-end="url(#a-te)"/>
+      <line x1="600" y1="311" x2="600" y2="328" stroke="#0F6E56" stroke-width="1.2" marker-end="url(#a-te)"/>
+
+    </svg>
+    <div id="dots-layer"></div>
+  </div>
+
+  <div class="info-panel" id="info-panel">
+    <strong>Click any node</strong> to learn about that component &#8212; or watch the animated flow to see how data moves through the pipeline.
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot" style="background:#639922"></span>Document ingestion</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#185FA5"></span>OpenAI embeddings</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#534AB7"></span>Pinecone retrieval</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#880E4F"></span>Claude API</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#0F6E56"></span>Response output</div>
+  </div>
+
+</div>
+<script>
+// ─── Node descriptions ───────────────────────────────────────────────────────
+const NODE_INFO = {
+  docs:    { t:'CMS Documents', b:'5 source documents: 1 CMS audit checklist + 4 policy PDFs. These are chunked and indexed offline during the ingestion pipeline.' },
+  chunk:   { t:'Text Chunker', b:'Uses RecursiveCharacterTextSplitter (LangChain) to break documents into overlapping segments — typically 512 tokens with 50-token overlap — preserving semantic continuity across chunks.' },
+  embed:   { t:'OpenAI Embeddings (ingestion)', b:'Each text chunk is converted to a 1536-dim vector using <strong>text-embedding-ada-002</strong>. These vectors encode semantic meaning so similar passages cluster together in vector space.' },
+  pine:    { t:'Pinecone Vector Store', b:'All chunk embeddings are upserted into a managed Pinecone index. At query time, Pinecone performs approximate nearest-neighbour (ANN) search in milliseconds at scale.' },
+  user:    { t:'Auditor Query', b:'The auditor submits a natural-language question — e.g. <em>"What CMS screening criteria apply to moderate-risk providers?"</em> No special syntax required.' },
+  qembed:  { t:'Query Embedding', b:'The query is embedded with the same <strong>text-embedding-ada-002</strong> model used during ingestion, ensuring the query vector and document vectors share the same semantic space.' },
+  sim:     { t:'Similarity Search (Top-K)', b:'Cosine similarity is computed between the query vector and all indexed vectors. Returns the top 3–5 most relevant passages; a threshold filter drops low-confidence results.' },
+  ctx:     { t:'Retrieved Chunks', b:'The most relevant document passages are assembled into a context window. Each chunk carries metadata — document name, page number, and chunk ID — for source attribution.' },
+  prompt:  { t:'Prompt Builder', b:'Constructs the final prompt: a <strong>system message</strong> constraining Claude to the provided context, followed by the retrieved chunks, then the user\'s query.' },
+  guard:   { t:'Guardrails Check', b:'Before sending to Claude: (1) verify context is non-empty — if empty, return a safe fallback; (2) flag low-confidence retrievals; (3) log query, latency, and token count.' },
+  claude:  { t:'Claude API — claude-3-5-sonnet', b:'Receives the fully augmented prompt and generates a grounded, factual response. The system message prevents speculation beyond the retrieved context.' },
+  ans:     { t:'Grounded Answer', b:'Claude\'s response cites specific CMS policy sections pulled from the retrieved chunks. Answers are scoped strictly to the corpus — no hallucination beyond source documents.' },
+  cite:    { t:'Source Attribution', b:'Each answer includes a reference trail: document name, page number, and chunk ID. Essential for audit defense — every claim is traceable to a source document.' },
+  deliver: { t:'Delivered to Auditor', b:'The final answer + citations are returned to the UI. The auditor can verify claims directly against the linked source documents.' },
+};
+
+function nodeInfo(key) {
+  const d = NODE_INFO[key]; if (!d) return;
+  const el = document.getElementById('info-panel');
+  el.className = 'info-panel';
+  el.innerHTML = '<strong>' + d.t + '</strong><br>' + d.b;
+  void el.offsetWidth;
+  el.className = 'info-panel anim';
+}
+
+// ─── Step highlight descriptions ─────────────────────────────────────────────
+const STEP_DESC = {
+  ingest:     'Ingestion runs offline. CMS documents are chunked, embedded via OpenAI ada-002, and stored in Pinecone. This pipeline only reruns when the corpus changes.',
+  query:      'At query time the auditor\'s natural-language question is embedded with the same ada-002 model used during ingestion, ensuring semantic alignment between query and corpus vectors.',
+  retrieval:  'The query vector hits Pinecone for cosine-similarity search. Top-K matching chunks are retrieved, assembled into a context window, and passed through the prompt builder with guardrails.',
+  generation: 'The augmented prompt (system constraints + retrieved context + query) is sent to Claude. Guardrails fire before generation to handle empty-context edge cases.',
+  output:     'Claude returns a grounded answer with full source citations. Every claim is traceable to a specific CMS document, page number, and chunk ID.',
+};
+const STEP_BTNS = { ingest:'btn-ingest', query:'btn-query', retrieval:'btn-ret', generation:'btn-gen', output:'btn-out' };
+
+function stepInfo(s) {
+  Object.values(STEP_BTNS).forEach(function(id) { document.getElementById(id).classList.remove('active'); });
+  document.getElementById(STEP_BTNS[s]).classList.add('active');
+  const el = document.getElementById('info-panel');
+  el.className = 'info-panel';
+  el.textContent = STEP_DESC[s];
+  void el.offsetWidth;
+  el.className = 'info-panel anim';
+}
+
+// ─── Animated dots ────────────────────────────────────────────────────────────
+// Each entry: color, delay within cycle (s), dot travel duration (s), waypoints [[svgX, svgY],…]
+const PATHS = [
+  // Zone 1 ingestion chain
+  { c:'#4a7c0e', delay:0.0, dur:1.1, pts:[[104,78],[104,89]] },
+  { c:'#185FA5', delay:0.5, dur:1.1, pts:[[104,126],[104,138]] },
+  { c:'#534AB7', delay:1.0, dur:1.1, pts:[[104,175],[104,187]] },
+  // Pinecone → Similarity Search
+  { c:'#534AB7', delay:1.5, dur:2.0, pts:[[190,206],[208,206],[208,163],[221,163]] },
+  // Zone 2 query chain
+  { c:'#BA7517', delay:0.8, dur:1.1, pts:[[104,327],[104,344]] },
+  // Query Embedding → Similarity Search
+  { c:'#185FA5', delay:1.3, dur:2.8, pts:[[190,363],[208,363],[208,163],[221,163]] },
+  // Zone 3 retrieval chain
+  { c:'#534AB7', delay:2.3, dur:0.9, pts:[[323,181],[323,197]] },
+  { c:'#4527A0', delay:2.8, dur:0.9, pts:[[323,234],[323,250]] },
+  { c:'#BA7517', delay:3.3, dur:0.9, pts:[[323,287],[323,303]] },
+  // Prompt Builder → Claude API
+  { c:'#880E4F', delay:3.8, dur:2.2, pts:[[425,269],[441,269],[441,90],[484,90]] },
+  // Claude API → Grounded Answer
+  { c:'#0F6E56', delay:5.2, dur:1.5, pts:[[600,142],[600,220]] },
+  // Zone 5 output chain
+  { c:'#1D9E75', delay:6.0, dur:0.9, pts:[[600,257],[600,274]] },
+  { c:'#0F6E56', delay:6.5, dur:0.9, pts:[[600,311],[600,328]] },
+];
+const CYCLE_S = 8.0;
+
+let playing = true;
+let tids    = [];
+
+function ptAlong(pts, t) {
+  var lens = [], total = 0, i, l, d, cum, f;
+  for (i = 1; i < pts.length; i++) {
+    l = Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]);
+    lens.push(l); total += l;
+  }
+  d = t * total; cum = 0;
+  for (i = 0; i < lens.length; i++) {
+    if (d <= cum + lens[i]) {
+      f = (d - cum) / lens[i];
+      return [pts[i][0] + f*(pts[i+1][0]-pts[i][0]),
+              pts[i][1] + f*(pts[i+1][1]-pts[i][1])];
+    }
+    cum += lens[i];
+  }
+  return pts[pts.length - 1];
+}
+
+function spawnDot(p) {
+  var svg   = document.getElementById('flow-svg');
+  var layer = document.getElementById('dots-layer');
+  var dot   = document.createElement('div');
+  dot.style.cssText = 'position:absolute;width:9px;height:9px;border-radius:50%;background:' + p.c +
+    ';opacity:0;pointer-events:none;transform:translate(-50%,-50%);box-shadow:0 0 5px ' + p.c + '99;';
+  layer.appendChild(dot);
+
+  var start = null;
+  var dur   = p.dur * 1000;
+
+  function frame(ts) {
+    if (!playing) { dot.remove(); return; }
+    if (!start) start = ts;
+    var t      = Math.min((ts - start) / dur, 1);
+    var fadeIn = Math.min(t / 0.1, 1);
+    var fadeOut= t > 0.85 ? 1 - (t - 0.85) / 0.15 : 1;
+    dot.style.opacity = fadeIn * fadeOut;
+
+    var R  = svg.getBoundingClientRect();
+    var LR = layer.getBoundingClientRect();
+    var vb = svg.viewBox.baseVal;
+    var sx = R.width  / vb.width;
+    var sy = R.height / vb.height;
+    var ox = R.left - LR.left;
+    var oy = R.top  - LR.top;
+    var xy = ptAlong(p.pts, t);
+    dot.style.left = (ox + xy[0] * sx) + 'px';
+    dot.style.top  = (oy + xy[1] * sy) + 'px';
+
+    if (t < 1) requestAnimationFrame(frame); else dot.remove();
+  }
+  requestAnimationFrame(frame);
+}
+
+function runCycle() {
+  if (!playing) return;
+  PATHS.forEach(function(p) {
+    var id = setTimeout(function() { if (playing) spawnDot(p); }, p.delay * 1000);
+    tids.push(id);
+  });
+  var id = setTimeout(runCycle, CYCLE_S * 1000);
+  tids.push(id);
+}
+
+function stopAll() {
+  tids.forEach(clearTimeout); tids = [];
+  document.getElementById('dots-layer').innerHTML = '';
+}
+
+function togglePlay() {
+  playing = !playing;
+  var btn = document.getElementById('btn-play');
+  if (playing) {
+    btn.textContent = '▶ Animate flow';
+    btn.classList.add('active');
+    runCycle();
+  } else {
+    btn.textContent = '⏸ Paused';
+    btn.classList.remove('active');
+    stopAll();
+  }
+}
+
+window.addEventListener('load', function() { setTimeout(runCycle, 500); });
+</script>
+</body>
+</html>
