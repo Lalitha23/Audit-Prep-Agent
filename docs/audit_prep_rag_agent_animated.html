@@ -1,0 +1,458 @@
+
+<style>
+@keyframes flowDot {
+  0%   { opacity: 0; offset-distance: 0%;   }
+  8%   { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { opacity: 0; offset-distance: 100%; }
+}
+@keyframes pulseRing {
+  0%   { r: 5; opacity: .8; }
+  100% { r: 18; opacity: 0; }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.dot {
+  position: absolute;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  offset-rotate: 0deg;
+  animation: flowDot linear infinite;
+  pointer-events: none;
+  z-index: 10;
+}
+.step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.zone-card {
+  border-radius: var(--border-radius-lg);
+  border: 0.5px solid var(--color-border-tertiary);
+  background: var(--color-background-primary);
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  transition: box-shadow .2s;
+  cursor: default;
+}
+.zone-card:hover { border-color: var(--color-border-secondary); }
+.zone-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.node-pill {
+  background: var(--color-background-secondary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-md);
+  padding: 6px 10px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
+  transition: background .15s;
+  cursor: pointer;
+}
+.node-pill:hover { background: var(--color-background-tertiary); color: var(--color-text-primary); }
+.node-pill.active {
+  background: var(--color-background-info);
+  border-color: var(--color-border-info);
+  color: var(--color-text-info);
+  font-weight: 500;
+}
+.connector-area {
+  position: relative;
+  width: 100%;
+  overflow: visible;
+}
+.flow-svg {
+  width: 100%;
+  display: block;
+}
+.legend-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.info-panel {
+  background: var(--color-background-secondary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-lg);
+  padding: 14px 16px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  min-height: 60px;
+  animation: fadeIn .3s ease;
+  line-height: 1.6;
+}
+.info-panel strong { color: var(--color-text-primary); font-weight: 500; }
+.ctrl-btn {
+  font-size: 12px;
+  padding: 5px 14px;
+  border-radius: var(--border-radius-md);
+  border: 0.5px solid var(--color-border-secondary);
+  background: var(--color-background-primary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background .15s;
+}
+.ctrl-btn:hover { background: var(--color-background-secondary); }
+.ctrl-btn.active { background: var(--color-background-info); border-color: var(--color-border-info); color: var(--color-text-info); }
+</style>
+
+<h2 class="sr-only">Audit Prep RAG Agent — animated architecture diagram showing data flow from document ingestion through vector retrieval to Claude API generation</h2>
+
+<div style="padding: 1rem 0 0;">
+
+  <!-- Title -->
+  <div style="margin-bottom:16px;">
+    <div style="font-size:15px;font-weight:500;color:var(--color-text-primary);margin-bottom:2px;">Audit Prep RAG Agent</div>
+    <div style="font-size:12px;color:var(--color-text-secondary);">OpenAI Embeddings &nbsp;·&nbsp; Pinecone Vector Store &nbsp;·&nbsp; Claude API &nbsp;·&nbsp; 5 CMS Documents</div>
+  </div>
+
+  <!-- Controls -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+    <button class="ctrl-btn active" id="btn-play" onclick="togglePlay()"><i class="ti ti-player-play" aria-hidden="true"></i> Animate flow</button>
+    <button class="ctrl-btn" id="btn-ingest" onclick="highlightStep('ingest')">① Ingestion</button>
+    <button class="ctrl-btn" id="btn-query"  onclick="highlightStep('query')">② Query</button>
+    <button class="ctrl-btn" id="btn-ret"    onclick="highlightStep('retrieval')">③ Retrieval</button>
+    <button class="ctrl-btn" id="btn-gen"    onclick="highlightStep('generation')">④ Generation</button>
+    <button class="ctrl-btn" id="btn-out"    onclick="highlightStep('output')">⑤ Output</button>
+  </div>
+
+  <!-- Main diagram: SVG with animated dots -->
+  <div class="connector-area" id="diagram-wrap">
+    <svg id="flow-svg" class="flow-svg" viewBox="0 0 680 520" role="img">
+      <title>RAG Agent Architecture Flow</title>
+      <desc>Five zones: Document Ingestion, User Query, Retrieval Engine, Claude Generation, and Response Output, connected by numbered animated data flow paths.</desc>
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- ── Zone backgrounds ── -->
+      <!-- Zone 1: Ingestion (top-left) -->
+      <rect x="10" y="10" width="200" height="220" rx="12" fill="#EAF3DE" stroke="#639922" stroke-width="0.5" opacity="0.5" id="z-ingest"/>
+      <text x="22" y="30" font-size="10" font-weight="500" fill="#3B6D11" letter-spacing=".06em">① INGESTION</text>
+
+      <!-- Zone 2: Query (bottom-left) -->
+      <rect x="10" y="248" width="200" height="148" rx="12" fill="#FFF3E0" stroke="#BA7517" stroke-width="0.5" opacity="0.5" id="z-query"/>
+      <text x="22" y="268" font-size="10" font-weight="500" fill="#854F0B" letter-spacing=".06em">② USER QUERY</text>
+
+      <!-- Zone 3: Retrieval (center) -->
+      <rect x="230" y="130" width="210" height="266" rx="12" fill="#E8EAF6" stroke="#534AB7" stroke-width="0.5" opacity="0.5" id="z-ret"/>
+      <text x="242" y="150" font-size="10" font-weight="500" fill="#3C3489" letter-spacing=".06em">③ RETRIEVAL ENGINE</text>
+
+      <!-- Zone 4: Generation (top-right) -->
+      <rect x="460" y="10" width="210" height="180" rx="12" fill="#FCE4EC" stroke="#993556" stroke-width="0.5" opacity="0.5" id="z-gen"/>
+      <text x="472" y="30" font-size="10" font-weight="500" fill="#72243E" letter-spacing=".06em">④ CLAUDE API</text>
+
+      <!-- Zone 5: Output (bottom-right) -->
+      <rect x="460" y="208" width="210" height="188" rx="12" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5" opacity="0.5" id="z-out"/>
+      <text x="472" y="228" font-size="10" font-weight="500" fill="#085041" letter-spacing=".06em">⑤ RESPONSE OUTPUT</text>
+
+      <!-- ── Nodes ── -->
+      <!-- Docs -->
+      <g class="node" id="n-docs" onclick="showInfo('docs')">
+        <rect x="20" y="40" width="90" height="38" rx="6" fill="#C0DD97" stroke="#639922" stroke-width="0.5"/>
+        <text x="65" y="55" text-anchor="middle" font-size="11" font-weight="500" fill="#173404" dominant-baseline="central">CMS Docs</text>
+        <text x="65" y="69" text-anchor="middle" font-size="10" fill="#3B6D11" dominant-baseline="central">1 checklist + 4 policy</text>
+      </g>
+      <!-- Chunker -->
+      <g class="node" id="n-chunk" onclick="showInfo('chunk')">
+        <rect x="20" y="98" width="90" height="36" rx="6" fill="#EAF3DE" stroke="#639922" stroke-width="0.5"/>
+        <text x="65" y="116" text-anchor="middle" font-size="11" font-weight="500" fill="#173404" dominant-baseline="central">Text Chunker</text>
+      </g>
+      <!-- Embedder -->
+      <g class="node" id="n-embed" onclick="showInfo('embed')">
+        <rect x="20" y="152" width="90" height="36" rx="6" fill="#B5D4F4" stroke="#185FA5" stroke-width="0.5"/>
+        <text x="65" y="170" text-anchor="middle" font-size="11" font-weight="500" fill="#042C53" dominant-baseline="central">OpenAI Embed</text>
+      </g>
+      <!-- Pinecone -->
+      <g class="node" id="n-pine" onclick="showInfo('pine')">
+        <rect x="20" y="198" width="90" height="22" rx="5" fill="#CECBF6" stroke="#534AB7" stroke-width="0.5"/>
+        <text x="65" y="209" text-anchor="middle" font-size="10" font-weight="500" fill="#26215C" dominant-baseline="central">Pinecone Store</text>
+      </g>
+      <!-- Query input -->
+      <g class="node" id="n-user" onclick="showInfo('user')">
+        <rect x="20" y="280" width="90" height="36" rx="6" fill="#FFF9C4" stroke="#BA7517" stroke-width="0.5"/>
+        <text x="65" y="298" text-anchor="middle" font-size="11" font-weight="500" fill="#412402" dominant-baseline="central">Auditor Query</text>
+      </g>
+      <!-- Query embed -->
+      <g class="node" id="n-qembed" onclick="showInfo('qembed')">
+        <rect x="20" y="336" width="90" height="36" rx="6" fill="#B5D4F4" stroke="#185FA5" stroke-width="0.5"/>
+        <text x="65" y="354" text-anchor="middle" font-size="11" font-weight="500" fill="#042C53" dominant-baseline="central">Query Embed</text>
+      </g>
+      <!-- Similarity search -->
+      <g class="node" id="n-sim" onclick="showInfo('sim')">
+        <rect x="242" y="162" width="186" height="36" rx="6" fill="#C5CAE9" stroke="#3C3489" stroke-width="0.5"/>
+        <text x="335" y="180" text-anchor="middle" font-size="11" font-weight="500" fill="#1A237E" dominant-baseline="central">Similarity Search (Top-K)</text>
+      </g>
+      <!-- Context chunks -->
+      <g class="node" id="n-ctx" onclick="showInfo('ctx')">
+        <rect x="242" y="218" width="186" height="36" rx="6" fill="#E8EAF6" stroke="#534AB7" stroke-width="0.5"/>
+        <text x="335" y="236" text-anchor="middle" font-size="11" font-weight="500" fill="#26215C" dominant-baseline="central">Retrieved Chunks</text>
+      </g>
+      <!-- Prompt builder -->
+      <g class="node" id="n-prompt" onclick="showInfo('prompt')">
+        <rect x="242" y="274" width="186" height="36" rx="6" fill="#D1C4E9" stroke="#4527A0" stroke-width="0.5"/>
+        <text x="335" y="292" text-anchor="middle" font-size="11" font-weight="500" fill="#26215C" dominant-baseline="central">Prompt Builder</text>
+      </g>
+      <!-- Guardrails -->
+      <g class="node" id="n-guard" onclick="showInfo('guard')">
+        <rect x="242" y="330" width="186" height="36" rx="6" fill="#FFFDE7" stroke="#BA7517" stroke-width="0.5"/>
+        <text x="335" y="348" text-anchor="middle" font-size="11" font-weight="500" fill="#412402" dominant-baseline="central">Guardrails Check</text>
+      </g>
+      <!-- Claude -->
+      <g class="node" id="n-claude" onclick="showInfo('claude')">
+        <ellipse cx="565" cy="100" rx="80" ry="42" fill="#F8BBD9" stroke="#880E4F" stroke-width="1"/>
+        <text x="565" y="96" text-anchor="middle" font-size="12" font-weight="500" fill="#4A148C" dominant-baseline="central">Claude API</text>
+        <text x="565" y="112" text-anchor="middle" font-size="10" fill="#880E4F" dominant-baseline="central">claude-3-5-sonnet</text>
+      </g>
+      <!-- Answer -->
+      <g class="node" id="n-ans" onclick="showInfo('ans')">
+        <rect x="476" y="240" width="178" height="36" rx="6" fill="#9FE1CB" stroke="#0F6E56" stroke-width="0.5"/>
+        <text x="565" y="258" text-anchor="middle" font-size="11" font-weight="500" fill="#04342C" dominant-baseline="central">Grounded Answer</text>
+      </g>
+      <!-- Source cite -->
+      <g class="node" id="n-cite" onclick="showInfo('cite')">
+        <rect x="476" y="296" width="178" height="36" rx="6" fill="#E1F5EE" stroke="#1D9E75" stroke-width="0.5"/>
+        <text x="565" y="314" text-anchor="middle" font-size="11" font-weight="500" fill="#04342C" dominant-baseline="central">Source Attribution</text>
+      </g>
+      <!-- User delivery -->
+      <g class="node" id="n-deliver" onclick="showInfo('deliver')">
+        <rect x="496" y="354" width="138" height="34" rx="6" fill="#5DCAA5" stroke="#0F6E56" stroke-width="0.5"/>
+        <text x="565" y="371" text-anchor="middle" font-size="11" font-weight="500" fill="#04342C" dominant-baseline="central">Delivered to Auditor</text>
+      </g>
+
+      <!-- ── Edges (arrows) ── -->
+      <!-- Docs → Chunk -->
+      <line id="e-doc-chunk" x1="65" y1="78" x2="65" y2="97" stroke="#639922" stroke-width="1" marker-end="url(#arr)" fill="none"/>
+      <!-- Chunk → Embed -->
+      <line id="e-chunk-embed" x1="65" y1="134" x2="65" y2="151" stroke="#185FA5" stroke-width="1" marker-end="url(#arr)" fill="none"/>
+      <!-- Embed → Pinecone -->
+      <line id="e-embed-pine" x1="65" y1="188" x2="65" y2="197" stroke="#534AB7" stroke-width="1" marker-end="url(#arr)" fill="none"/>
+      <!-- Pinecone → Similarity (from Pinecone right to Sim left) -->
+      <path id="e-pine-sim" d="M110 209 Q176 209 242 180" stroke="#534AB7" stroke-width="1" fill="none" marker-end="url(#arr)"/>
+      <!-- User → QEmbed -->
+      <line id="e-user-qembed" x1="65" y1="316" x2="65" y2="335" stroke="#BA7517" stroke-width="1" marker-end="url(#arr)" fill="none"/>
+      <!-- QEmbed → Similarity -->
+      <path id="e-qembed-sim" d="M110 354 Q176 354 220 180" stroke="#185FA5" stroke-width="1" fill="none" marker-end="url(#arr)"/>
+      <!-- Sim → Ctx -->
+      <line id="e-sim-ctx" x1="335" y1="198" x2="335" y2="217" stroke="#3C3489" stroke-width="1" marker-end="url(#arr)" fill="none"/>
+      <!-- Ctx → Prompt -->
+      <line id="e-ctx-prompt" x1="335" y1="254" x2="335" y2="273" stroke="#4527A0" stroke-width="1" marker-end="url(#arr)" fill="none"/>
+      <!-- Prompt → Guard -->
+      <line id="e-prompt-guard" x1="335" y1="310" x2="335" y2="329" stroke="#BA7517" stroke-width="1" marker-end="url(#arr)" fill="none"/>
+      <!-- Prompt → Claude (left edge of zone 4) -->
+      <path id="e-prompt-claude" d="M428 292 Q445 292 445 100 L484 100" stroke="#880E4F" stroke-width="1.2" fill="none" marker-end="url(#arr)"/>
+      <!-- Claude → Answer -->
+      <path id="e-claude-ans" d="M565 142 L565 239" stroke="#0F6E56" stroke-width="1.2" fill="none" marker-end="url(#arr)"/>
+      <!-- Answer → Cite -->
+      <line id="e-ans-cite" x1="565" y1="276" x2="565" y2="295" stroke="#1D9E75" stroke-width="1" marker-end="url(#arr)" fill="none"/>
+      <!-- Cite → Deliver -->
+      <line id="e-cite-deliver" x1="565" y1="332" x2="565" y2="353" stroke="#0F6E56" stroke-width="1" marker-end="url(#arr)" fill="none"/>
+
+      <!-- Flow step labels -->
+      <text x="125" y="207" font-size="10" fill="#534AB7" opacity=".8">vector index</text>
+      <text x="480" y="290" font-size="10" fill="#880E4F" opacity=".8">augmented prompt</text>
+      <text x="580" y="220" font-size="10" fill="#0F6E56" opacity=".8">response</text>
+    </svg>
+
+    <!-- Animated dots overlay -->
+    <div id="dots-layer" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></div>
+  </div>
+
+  <!-- Info panel -->
+  <div class="info-panel" id="info-panel" style="margin-top:12px;">
+    <strong>Click any node</strong> to learn about that component — or watch the animated flow to see how data moves through the pipeline.
+  </div>
+
+  <!-- Legend -->
+  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;">
+    <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--color-text-secondary);">
+      <span class="legend-dot" style="background:#639922;"></span> Document ingestion
+    </div>
+    <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--color-text-secondary);">
+      <span class="legend-dot" style="background:#185FA5;"></span> Embeddings (OpenAI)
+    </div>
+    <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--color-text-secondary);">
+      <span class="legend-dot" style="background:#534AB7;"></span> Vector retrieval (Pinecone)
+    </div>
+    <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--color-text-secondary);">
+      <span class="legend-dot" style="background:#880E4F;"></span> Claude API generation
+    </div>
+    <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--color-text-secondary);">
+      <span class="legend-dot" style="background:#0F6E56;"></span> Response output
+    </div>
+  </div>
+
+</div>
+
+<script>
+const INFO = {
+  docs:    { title:'CMS Documents (corpus)', body:'5 source documents: 1 CMS audit checklist + 4 policy PDFs. These are chunked and indexed offline during the ingestion pipeline.' },
+  chunk:   { title:'Text Chunker', body:'Uses RecursiveCharacterTextSplitter (LangChain) to break documents into overlapping segments — typically 512 tokens with 50-token overlap — preserving semantic continuity across chunks.' },
+  embed:   { title:'OpenAI Embeddings (ingestion)', body:'Each text chunk is converted to a 1536-dim vector using <strong>text-embedding-ada-002</strong>. These vectors encode semantic meaning so similar passages cluster together in vector space.' },
+  pine:    { title:'Pinecone Vector Store', body:'All chunk embeddings are upserted into a managed Pinecone index. At query time, Pinecone performs approximate nearest-neighbour (ANN) search in milliseconds at scale.' },
+  user:    { title:'Auditor Query', body:'The auditor (you) submits a natural language question — e.g. <em>"What CMS screening criteria apply to moderate-risk providers?"</em>. No special syntax needed.' },
+  qembed:  { title:'Query Embedding', body:'The query is embedded using the same <strong>text-embedding-ada-002</strong> model as the corpus. This ensures the query vector and document vectors live in the same semantic space.' },
+  sim:     { title:'Similarity Search (Top-K)', body:'Cosine similarity between the query vector and all indexed vectors. Returns the top 3–5 most relevant passages. A threshold filter can drop low-confidence results.' },
+  ctx:     { title:'Retrieved Chunks', body:'The most relevant document passages are assembled into a context window. Each chunk carries metadata: document name, page, and chunk ID for source attribution.' },
+  prompt:  { title:'Prompt Builder', body:'Constructs the final prompt: <strong>System prompt</strong> ("You are a CMS compliance expert. Answer only from the provided context.") + retrieved chunks + user query.' },
+  guard:   { title:'Guardrails Check', body:'Before sending to Claude: (1) verify context is non-empty — if empty, return a fallback message; (2) flag hallucination risk if confidence is low; (3) log query + latency + token count.' },
+  claude:  { title:'Claude API (claude-3-5-sonnet)', body:'Receives the fully augmented prompt and generates a grounded, factual response. The system prompt prevents speculation beyond retrieved context.' },
+  ans:     { title:'Grounded Answer', body:'Claude\'s response cites specific CMS policy sections pulled from the retrieved chunks. Answers are scoped strictly to the corpus — no hallucination beyond the documents.' },
+  cite:    { title:'Source Attribution', body:'Each answer includes a reference trail: document name, page number, and chunk ID. This is essential for audit defense — every claim is traceable to a source document.' },
+  deliver: { title:'Delivered to Auditor', body:'The final answer + citations are returned to the user interface. The auditor can verify claims directly against the linked source documents.' },
+};
+
+function showInfo(key) {
+  const d = INFO[key];
+  if (!d) return;
+  const el = document.getElementById('info-panel');
+  el.innerHTML = `<strong>${d.title}</strong><br>${d.body}`;
+  el.style.animation = 'none';
+  requestAnimationFrame(() => { el.style.animation = 'fadeIn .3s ease'; });
+}
+
+const STEP_INFO = {
+  ingest:     'Ingestion pipeline runs offline. CMS documents are chunked, embedded via OpenAI, and stored in Pinecone. This only runs when the corpus changes.',
+  query:      'At query time, the auditor\'s natural language question is embedded with the same OpenAI model used during ingestion — ensuring semantic alignment.',
+  retrieval:  'The query vector hits Pinecone for cosine similarity search. Top-K matching chunks are retrieved, assembled into context, and passed through the prompt builder.',
+  generation: 'The augmented prompt (system instructions + retrieved context + query) is sent to Claude API. Guardrails fire before and after generation.',
+  output:     'Claude returns a grounded answer with source citations. Every claim is traceable to a specific CMS document and chunk ID.',
+};
+const STEP_BTN = { ingest:'btn-ingest', query:'btn-query', retrieval:'btn-ret', generation:'btn-gen', output:'btn-out' };
+
+function highlightStep(step) {
+  Object.values(STEP_BTN).forEach(id => document.getElementById(id).classList.remove('active'));
+  document.getElementById(STEP_BTN[step]).classList.add('active');
+  const el = document.getElementById('info-panel');
+  el.innerHTML = STEP_INFO[step];
+  el.style.animation = 'none';
+  requestAnimationFrame(() => { el.style.animation = 'fadeIn .3s ease'; });
+}
+
+// --- Animated dots ---
+let playing = true;
+let dotIntervals = [];
+
+function getSVGCoords(svgEl, nx, ny) {
+  const rect = svgEl.getBoundingClientRect();
+  const vw = 680, vh = 520;
+  return { x: (nx / vw) * rect.width, y: (ny / vh) * rect.height };
+}
+
+const PATHS = [
+  { id:'p1', color:'#639922', delay:0,    dur:1.8, path:[ [65,78],[65,97] ] },
+  { id:'p2', color:'#185FA5', delay:0.4,  dur:1.8, path:[ [65,134],[65,151] ] },
+  { id:'p3', color:'#534AB7', delay:0.8,  dur:1.8, path:[ [65,188],[65,209],[176,209],[242,180] ] },
+  { id:'p4', color:'#BA7517', delay:1.2,  dur:1.8, path:[ [65,316],[65,335] ] },
+  { id:'p5', color:'#185FA5', delay:1.6,  dur:2.2, path:[ [110,354],[176,354],[220,180],[242,180] ] },
+  { id:'p6', color:'#3C3489', delay:2.0,  dur:1.5, path:[ [335,198],[335,217] ] },
+  { id:'p7', color:'#4527A0', delay:2.4,  dur:1.5, path:[ [335,254],[335,273] ] },
+  { id:'p8', color:'#880E4F', delay:2.8,  dur:2.2, path:[ [428,292],[445,292],[445,100],[484,100] ] },
+  { id:'p9', color:'#0F6E56', delay:3.8,  dur:1.8, path:[ [565,142],[565,239] ] },
+  { id:'p10',color:'#1D9E75', delay:4.4,  dur:1.4, path:[ [565,276],[565,295] ] },
+  { id:'p11',color:'#0F6E56', delay:4.8,  dur:1.4, path:[ [565,332],[565,353] ] },
+];
+
+function pctAlong(pts, t) {
+  const segs = [];
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i][0]-pts[i-1][0], dy = pts[i][1]-pts[i-1][1];
+    const l = Math.sqrt(dx*dx+dy*dy);
+    segs.push(l); total += l;
+  }
+  let dist = t * total, cum = 0;
+  for (let i = 0; i < segs.length; i++) {
+    if (dist <= cum + segs[i]) {
+      const frac = (dist - cum) / segs[i];
+      return [
+        pts[i][0] + frac*(pts[i+1][0]-pts[i][0]),
+        pts[i][1] + frac*(pts[i+1][1]-pts[i][1])
+      ];
+    }
+    cum += segs[i];
+  }
+  return pts[pts.length-1];
+}
+
+function spawnDot(p, svgEl, wrap) {
+  const dot = document.createElement('div');
+  dot.style.cssText = `position:absolute;width:9px;height:9px;border-radius:50%;background:${p.color};opacity:0;pointer-events:none;transform:translate(-50%,-50%);box-shadow:0 0 4px ${p.color};transition:none;`;
+  wrap.appendChild(dot);
+  const rect = svgEl.getBoundingClientRect();
+  const wRect = wrap.getBoundingClientRect();
+  const vw = 680, vh = 520;
+  const scaleX = rect.width / vw, scaleY = rect.height / vh;
+  const offX = rect.left - wRect.left, offY = rect.top - wRect.top;
+
+  let start = null;
+  const dur = p.dur * 1000;
+  function step(ts) {
+    if (!playing) { dot.remove(); return; }
+    if (!start) start = ts;
+    let t = (ts - start) / dur;
+    if (t > 1) { dot.remove(); return; }
+    const fadeIn = Math.min(t / 0.08, 1);
+    const fadeOut = t > 0.88 ? 1 - (t - 0.88) / 0.12 : 1;
+    const opacity = fadeIn * fadeOut;
+    const [nx, ny] = pctAlong(p.path, t);
+    dot.style.opacity = opacity;
+    dot.style.left = (offX + nx * scaleX) + 'px';
+    dot.style.top  = (offY + ny * scaleY) + 'px';
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+function startDots() {
+  const svgEl = document.getElementById('flow-svg');
+  const wrap  = document.getElementById('dots-layer');
+  dotIntervals.forEach(clearInterval);
+  dotIntervals = [];
+  PATHS.forEach(p => {
+    const iv = setInterval(() => { if (playing) spawnDot(p, svgEl, wrap); }, p.dur * 1000 * 0.8 + 200);
+    dotIntervals.push(iv);
+    setTimeout(() => { if (playing) spawnDot(p, svgEl, wrap); }, p.delay * 1000);
+  });
+}
+
+function togglePlay() {
+  playing = !playing;
+  const btn = document.getElementById('btn-play');
+  if (playing) {
+    btn.classList.add('active');
+    btn.innerHTML = '<i class="ti ti-player-play" aria-hidden="true"></i> Animate flow';
+    startDots();
+  } else {
+    btn.classList.remove('active');
+    btn.innerHTML = '<i class="ti ti-player-pause" aria-hidden="true"></i> Paused';
+    dotIntervals.forEach(clearInterval);
+    dotIntervals = [];
+    document.getElementById('dots-layer').innerHTML = '';
+  }
+}
+
+window.addEventListener('load', () => { setTimeout(startDots, 300); });
+</script>
